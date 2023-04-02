@@ -2,7 +2,10 @@ use axum::{
     routing::get,
     response::Json,
     Router,
+    ServiceExt,
 };
+use tower_http::normalize_path::NormalizePathLayer;
+use tower::layer::Layer;
 use serde_json::{Value, json};
 
 async fn get_redfish() -> Json<Value> {
@@ -11,8 +14,7 @@ async fn get_redfish() -> Json<Value> {
 
 #[tokio::main]
 async fn main() {
-    // build our application with a single route
-    let app = Router::new().route("/redfish", get(get_redfish));
+    let app = NormalizePathLayer::trim_trailing_slash().layer(Router::new().route("/redfish", get(get_redfish)));
 
     // run it with hyper on localhost:3000
     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
