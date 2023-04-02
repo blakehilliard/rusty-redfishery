@@ -1,5 +1,6 @@
 use axum::{
     extract::Path,
+    http::StatusCode,
     routing::get,
     response::Json,
     Router,
@@ -37,7 +38,7 @@ async fn get_redfish() -> Json<Value> {
     Json(json!({ "v1": "/redfish/v1/" }))
 }
 
-async fn handle_redfish_path(Path(path): Path<String>) -> Json<Value> {
+async fn handle_redfish_path(Path(path): Path<String>) -> (StatusCode, Json<Value>) {
     let root = RedfishResource {
         uri: String::from("/redfish/v1"),
         resource_type: String::from("ServiceRoot"),
@@ -48,9 +49,9 @@ async fn handle_redfish_path(Path(path): Path<String>) -> Json<Value> {
     };
     let uri = "/redfish/".to_owned() + &path;
     if uri == "/redfish/v1" {
-        return Json(root.json());
+        return (StatusCode::OK, Json(root.json()));
     }
-    Json(json!({ "TODO": uri }))
+    (StatusCode::NOT_FOUND, Json(json!({"TODO": "FIXME"})))
 }
 
 #[tokio::main]

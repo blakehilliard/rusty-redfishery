@@ -23,3 +23,6 @@ assert('"@odata.id":"/redfish/v1"' in res)
 assert('"@odata.type":"#ServiceRoot.v1_15_0.ServiceRoot"' in res)
 assert('"Id":"RootService"' in res)
 assert('"Name":"Root Service"' in res)
+
+res = get_uri("/redfish/v1/NotFound")
+assert("404 Not Found" in res)
