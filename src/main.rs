@@ -54,16 +54,50 @@ async fn handle_redfish_path(Path(path): Path<String>) -> (StatusCode, Json<Valu
     (StatusCode::NOT_FOUND, Json(json!({"TODO": "FIXME"})))
 }
 
+fn app() -> Router {
+    Router::new()
+        .route("/redfish", get(get_redfish))
+        .route("/redfish/*path", get(handle_redfish_path))
+}
+
 #[tokio::main]
 async fn main() {
     let layer = NormalizePathLayer::trim_trailing_slash();
-    let app = Router::new()
-        .route("/redfish", get(get_redfish))
-        .route("/redfish/*path", get(handle_redfish_path));
-
-    // run it with hyper on localhost:3000
     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
-        .serve(layer.layer(app).into_make_service())
+        .serve(layer.layer(app()).into_make_service())
         .await
         .unwrap();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use serde_json::{json, Value};
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn base_redfish_path() {
+        let app = app();
+
+        let response = app
+            .oneshot(
+                Request::get("/redfish")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({})).unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        let body: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body, json!({ "v1": "/redfish/v1/" }));
+    }
 }
