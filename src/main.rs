@@ -79,13 +79,10 @@ mod tests {
     use serde_json::{json, Value};
     use tower::ServiceExt;
 
-    #[tokio::test]
-    async fn base_redfish_path() {
-        let app = app();
-
-        let response = app
+    async fn jget(uri: &str, status_code: StatusCode) -> Value {
+        let response = app()
             .oneshot(
-                Request::get("/redfish")
+                Request::get(uri)
                     .body(Body::from(
                         serde_json::to_vec(&json!({})).unwrap(),
                     ))
@@ -94,10 +91,32 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.status(), status_code);
 
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
-        let body: Value = serde_json::from_slice(&body).unwrap();
+        serde_json::from_slice(&body).unwrap()
+    }
+
+    #[tokio::test]
+    async fn base_redfish_path() {
+        let body = jget("/redfish", StatusCode::OK).await;
         assert_eq!(body, json!({ "v1": "/redfish/v1/" }));
+    }
+
+    #[tokio::test]
+    async fn redfish_v1() {
+        let body = jget("/redfish/v1", StatusCode::OK).await;
+        assert_eq!(body, json!({
+            "@odata.id": "/redfish/v1",
+            "@odata.type": "#ServiceRoot.v1_15_0.ServiceRoot",
+            "Id": "RootService",
+            "Name": "Root Service",
+        }));
+    }
+
+    #[tokio::test]
+    async fn not_found() {
+        let body = jget("/redfish/v1/notfound", StatusCode::NOT_FOUND).await;
+        assert_eq!(body, json!({ "TODO": "FIXME" }));
     }
 }
