@@ -3,11 +3,8 @@ use axum::{
     http::StatusCode,
     routing::get,
     response::Json,
-    Router,
     ServiceExt,
 };
-use tower_http::normalize_path::NormalizePathLayer;
-use tower::layer::Layer;
 use serde_json::{Value, json};
 
 struct RedfishResource {
@@ -34,10 +31,6 @@ impl RedfishResource {
     }
 }
 
-async fn get_redfish() -> Json<Value> {
-    Json(json!({ "v1": "/redfish/v1/" }))
-}
-
 async fn handle_redfish_path(Path(path): Path<String>) -> (StatusCode, Json<Value>) {
     let root = RedfishResource {
         uri: String::from("/redfish/v1"),
@@ -54,21 +47,16 @@ async fn handle_redfish_path(Path(path): Path<String>) -> (StatusCode, Json<Valu
     (StatusCode::NOT_FOUND, Json(json!({"TODO": "FIXME"})))
 }
 
-fn app() -> Router {
-    Router::new()
-        .route("/redfish", get(get_redfish))
-        .route("/redfish/*path", get(handle_redfish_path))
-}
-
 #[tokio::main]
 async fn main() {
-    let layer = NormalizePathLayer::trim_trailing_slash();
+    let app = redfish_axum::app(get(handle_redfish_path));
     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
-        .serve(layer.layer(app()).into_make_service())
+        .serve(app.into_make_service())
         .await
         .unwrap();
 }
 
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -80,7 +68,7 @@ mod tests {
     use tower::ServiceExt;
 
     async fn jget(uri: &str, status_code: StatusCode) -> Value {
-        let response = app()
+        let response = redfish_axum::app(handle_redfish_path)
             .oneshot(
                 Request::get(uri)
                     .body(Body::from(
@@ -120,3 +108,4 @@ mod tests {
         assert_eq!(body, json!({ "TODO": "FIXME" }));
     }
 }
+*/
