@@ -4,7 +4,9 @@ use axum::{
     routing::get,
     response::Json,
     ServiceExt,
+    Router,
 };
+use tower_http::normalize_path::{NormalizePath};
 use serde_json::{Value, json};
 
 struct RedfishResource {
@@ -47,16 +49,18 @@ async fn handle_redfish_path(Path(path): Path<String>) -> (StatusCode, Json<Valu
     (StatusCode::NOT_FOUND, Json(json!({"TODO": "FIXME"})))
 }
 
+fn app() -> NormalizePath<Router> {
+    redfish_axum::app(get(handle_redfish_path))
+}
+
 #[tokio::main]
 async fn main() {
-    let app = redfish_axum::app(get(handle_redfish_path));
     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
-        .serve(app.into_make_service())
+        .serve(app().into_make_service())
         .await
         .unwrap();
 }
 
-/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -68,7 +72,7 @@ mod tests {
     use tower::ServiceExt;
 
     async fn jget(uri: &str, status_code: StatusCode) -> Value {
-        let response = redfish_axum::app(handle_redfish_path)
+        let response = app()
             .oneshot(
                 Request::get(uri)
                     .body(Body::from(
@@ -108,4 +112,3 @@ mod tests {
         assert_eq!(body, json!({ "TODO": "FIXME" }));
     }
 }
-*/
