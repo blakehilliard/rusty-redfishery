@@ -9,42 +9,48 @@ use axum::{
 use tower_http::normalize_path::{NormalizePath};
 use serde_json::{Value, json};
 
+#[allow(dead_code)]
 struct RedfishResource {
     uri: String, //TODO: Enforce things here? Does DMTF recommend trailing slash or no?
     resource_type: String,
     schema_version: String, //TODO: Enforce conformity
     term_name: String, //TODO: Constructor where this is optional and derived from resource_type
     id: String, //TODO: Better name?
-    name: String, //TODO: Better name?
+    body: Value, //TODO: Enforce map
 }
 
 impl RedfishResource {
-    fn json(&self) -> Value {
-        json!({
-            "@odata.id": self.uri,
-            "@odata.type": self.odata_type(),
-            "Id": self.id,
-            "Name": self.name,
-        })
-    }
-
-    fn odata_type(&self) -> String {
-        format!("#{}.{}.{}", self.resource_type, self.schema_version, self.term_name)
+    fn new(uri: String, resource_type: String, schema_version: String, term_name: String, id: String, name: String, rest: Value) -> Self {
+        let mut body = rest;
+        body["@odata.id"] = json!(uri);
+        body["@odata.type"] = json!(format!("#{}.{}.{}", resource_type, schema_version, term_name));
+        body["Id"] = json!(id);
+        body["Name"] = json!(name);
+        Self {
+            uri, resource_type, schema_version, term_name, id, body
+        }
     }
 }
 
 async fn handle_redfish_path(Path(path): Path<String>) -> (StatusCode, Json<Value>) {
-    let root = RedfishResource {
-        uri: String::from("/redfish/v1"),
-        resource_type: String::from("ServiceRoot"),
-        schema_version: String::from("v1_15_0"),
-        term_name: String::from("ServiceRoot"),
-        id: String::from("RootService"),
-        name: String::from("Root Service"),
-    };
+    let root = RedfishResource::new(
+        String::from("/redfish/v1"),
+        String::from("ServiceRoot"),
+        String::from("v1_15_0"),
+        String::from("ServiceRoot"),
+        String::from("RootService"),
+        String::from("Root Service"),
+        json!({
+            "Links": {
+                "Sessions": {
+                    "@odata.id": "/redfish/v1/SessionService/Sessions"
+                },
+            },
+        }),
+    );
     let uri = "/redfish/".to_owned() + &path;
     if uri == "/redfish/v1" {
-        return (StatusCode::OK, Json(root.json()));
+        return (StatusCode::OK, Json(root.body));
     }
     (StatusCode::NOT_FOUND, Json(json!({"TODO": "FIXME"})))
 }
@@ -103,6 +109,11 @@ mod tests {
             "@odata.type": "#ServiceRoot.v1_15_0.ServiceRoot",
             "Id": "RootService",
             "Name": "Root Service",
+            "Links": {
+                "Sessions": {
+                    "@odata.id": "/redfish/v1/SessionService/Sessions"
+                }
+            }
         }));
     }
 
