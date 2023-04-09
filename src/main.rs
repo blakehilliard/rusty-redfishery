@@ -51,10 +51,14 @@ struct RedfishResource {
 }
 
 impl RedfishResource {
-    fn new(uri: String, resource_type: String, schema_version: String, term_name: String, id: String, name: String, rest: Value) -> Self {
+    fn new(uri: String, resource_type: String, schema_version: String, term_name: String, name: String, rest: Value) -> Self {
         let mut body = rest;
         body["@odata.id"] = json!(uri);
         body["@odata.type"] = json!(format!("#{}.{}.{}", resource_type, schema_version, term_name));
+        let id = match resource_type.as_str() {
+            "ServiceRoot" => String::from("RootService"),
+            _ => String::from(std::path::Path::new(uri.as_str()).file_name().unwrap().to_str().unwrap())
+        };
         body["Id"] = json!(id);
         body["Name"] = json!(name);
         Self {
@@ -80,13 +84,24 @@ async fn handle_redfish_path(Path(path): Path<String>) -> (StatusCode, Json<Valu
         String::from("ServiceRoot"),
         String::from("v1_15_0"),
         String::from("ServiceRoot"),
-        String::from("RootService"),
         String::from("Root Service"),
         json!({
             "Links": {
                 "Sessions": {
                     "@odata.id": "/redfish/v1/SessionService/Sessions"
                 },
+            },
+        })
+    )));
+    tree.push(Box::new(RedfishResource::new(
+        String::from("/redfish/v1/SessionService"),
+        String::from("SessionService"),
+        String::from("v1_1_9"),
+        String::from("SessionService"),
+        String::from("Session Service"),
+        json!({
+            "Sessions": {
+                "@odata.id": "/redfish/v1/SessionService/Sessions"
             },
         })
     )));
@@ -102,7 +117,7 @@ async fn handle_redfish_path(Path(path): Path<String>) -> (StatusCode, Json<Valu
             return (StatusCode::OK, Json(node.get_body()));
         }
     }
-    (StatusCode::NOT_FOUND, Json(json!({"TODO": "FIXME"})))
+    (StatusCode::NOT_FOUND, Json(json!({"TODO": "FIXME"}))) //FIXME
 }
 
 fn app() -> NormalizePath<Router> {
@@ -164,6 +179,18 @@ mod tests {
                     "@odata.id": "/redfish/v1/SessionService/Sessions"
                 }
             }
+        }));
+    }
+
+    #[tokio::test]
+    async fn session_service() {
+        let body = jget("/redfish/v1/SessionService/", StatusCode::OK).await;
+        assert_eq!(body, json!({
+            "@odata.id": "/redfish/v1/SessionService",
+            "@odata.type": "#SessionService.v1_1_9.SessionService",
+            "Id": "SessionService",
+            "Name": "Session Service",
+            "Sessions" : {"@odata.id": "/redfish/v1/SessionService/Sessions"},
         }));
     }
 
