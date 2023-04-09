@@ -33,24 +33,28 @@ impl RedfishResource {
 }
 
 async fn handle_redfish_path(Path(path): Path<String>) -> (StatusCode, Json<Value>) {
-    let root = RedfishResource::new(
-        String::from("/redfish/v1"),
-        String::from("ServiceRoot"),
-        String::from("v1_15_0"),
-        String::from("ServiceRoot"),
-        String::from("RootService"),
-        String::from("Root Service"),
-        json!({
-            "Links": {
-                "Sessions": {
-                    "@odata.id": "/redfish/v1/SessionService/Sessions"
+    let resources = [
+        RedfishResource::new(
+            String::from("/redfish/v1"),
+            String::from("ServiceRoot"),
+            String::from("v1_15_0"),
+            String::from("ServiceRoot"),
+            String::from("RootService"),
+            String::from("Root Service"),
+            json!({
+                "Links": {
+                    "Sessions": {
+                        "@odata.id": "/redfish/v1/SessionService/Sessions"
+                    },
                 },
-            },
-        }),
-    );
+            }),
+        ),
+    ];
     let uri = "/redfish/".to_owned() + &path;
-    if uri == "/redfish/v1" {
-        return (StatusCode::OK, Json(root.body));
+    for resource in resources {
+        if uri == resource.uri {
+            return (StatusCode::OK, Json(resource.body));
+        }
     }
     (StatusCode::NOT_FOUND, Json(json!({"TODO": "FIXME"})))
 }
