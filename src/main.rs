@@ -9,6 +9,37 @@ use axum::{
 use tower_http::normalize_path::{NormalizePath};
 use serde_json::{Value, json};
 
+trait RedfishNode {
+    fn get_uri(&self) -> &str;
+    fn get_body(&self) -> Value;
+}
+
+struct RedfishCollection {
+    uri: String,
+    resource_type: String,
+    name: String,
+    members: Vec<String>,
+}
+
+impl RedfishNode for RedfishCollection {
+    fn get_uri(&self) -> &str {
+        self.uri.as_str()
+    }
+
+    fn get_body(&self) -> Value {
+        //FIXME: Support more than 0 members
+        json!({
+            "@odata.id": self.uri,
+            "@odata.type": format!("#{}.{}", self.resource_type, self.resource_type),
+            "Name": self.name,
+            "Members": [
+
+            ],
+            "Members@odata.count": self.members.len(),
+        })
+    }
+}
+
 #[allow(dead_code)]
 struct RedfishResource {
     uri: String, //TODO: Enforce things here? Does DMTF recommend trailing slash or no?
@@ -32,28 +63,43 @@ impl RedfishResource {
     }
 }
 
+impl RedfishNode for RedfishResource {
+    fn get_uri(&self) -> &str {
+        self.uri.as_str()
+    }
+
+    fn get_body(&self) -> Value {
+        self.body.clone()
+    }
+}
+
 async fn handle_redfish_path(Path(path): Path<String>) -> (StatusCode, Json<Value>) {
-    let resources = [
-        RedfishResource::new(
-            String::from("/redfish/v1"),
-            String::from("ServiceRoot"),
-            String::from("v1_15_0"),
-            String::from("ServiceRoot"),
-            String::from("RootService"),
-            String::from("Root Service"),
-            json!({
-                "Links": {
-                    "Sessions": {
-                        "@odata.id": "/redfish/v1/SessionService/Sessions"
-                    },
+    let mut tree: Vec<Box<dyn RedfishNode>> = Vec::new();
+    tree.push(Box::new(RedfishResource::new(
+        String::from("/redfish/v1"),
+        String::from("ServiceRoot"),
+        String::from("v1_15_0"),
+        String::from("ServiceRoot"),
+        String::from("RootService"),
+        String::from("Root Service"),
+        json!({
+            "Links": {
+                "Sessions": {
+                    "@odata.id": "/redfish/v1/SessionService/Sessions"
                 },
-            }),
-        ),
-    ];
+            },
+        })
+    )));
+    tree.push(Box::new(RedfishCollection {
+        uri: String::from("/redfish/v1/SessionService/Sessions"),
+        resource_type: String::from("SessionCollection"),
+        name: String::from("Session Collection"),
+        members: vec![],
+    }));
     let uri = "/redfish/".to_owned() + &path;
-    for resource in resources {
-        if uri == resource.uri {
-            return (StatusCode::OK, Json(resource.body));
+    for node in tree {
+        if uri == node.get_uri() {
+            return (StatusCode::OK, Json(node.get_body()));
         }
     }
     (StatusCode::NOT_FOUND, Json(json!({"TODO": "FIXME"})))
@@ -118,6 +164,18 @@ mod tests {
                     "@odata.id": "/redfish/v1/SessionService/Sessions"
                 }
             }
+        }));
+    }
+
+    #[tokio::test]
+    async fn empty_session_collection() {
+        let body = jget("/redfish/v1/SessionService/Sessions", StatusCode::OK).await;
+        assert_eq!(body, json!({
+            "@odata.id": "/redfish/v1/SessionService/Sessions",
+            "@odata.type": "#SessionCollection.SessionCollection",
+            "Name": "Session Collection",
+            "Members" : [],
+            "Members@odata.count": 0,
         }));
     }
 
