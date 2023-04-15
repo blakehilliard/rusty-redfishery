@@ -1,11 +1,16 @@
 use axum::{
-    extract::Path,
+    extract::{
+        Path,
+        State,
+    },
     http::StatusCode,
     routing::get,
-    response::Json,
+    response::{Json, IntoResponse},
     ServiceExt,
     Router,
+    debug_handler,
 };
+use std::sync::{Arc, Mutex};
 use tower_http::normalize_path::{NormalizePath};
 use serde_json::{Value, json};
 
@@ -77,8 +82,24 @@ impl RedfishNode for RedfishResource {
     }
 }
 
-async fn handle_redfish_path(Path(path): Path<String>) -> (StatusCode, Json<Value>) {
-    let mut tree: Vec<Box<dyn RedfishNode>> = Vec::new();
+#[debug_handler]
+async fn handle_redfish_path(
+    Path(path): Path<String>,
+    State(state): State<Arc<Mutex<AppState>>>,
+) -> impl IntoResponse {
+    let uri = "/redfish/".to_owned() + &path;
+    let state = state.lock().unwrap();
+    for node in &state.redfish_tree {
+        if uri == node.get_uri() {
+            return (StatusCode::OK, Json(node.get_body()));
+        }
+    }
+    (StatusCode::NOT_FOUND, Json(json!({"TODO": "FIXME"}))) //FIXME
+}
+
+fn app() -> NormalizePath<Router> {
+    // Create mock redfish tree
+    let mut tree: Vec<Box<dyn RedfishNode + Send>> = Vec::new();
     tree.push(Box::new(RedfishResource::new(
         String::from("/redfish/v1"),
         String::from("ServiceRoot"),
@@ -111,17 +132,25 @@ async fn handle_redfish_path(Path(path): Path<String>) -> (StatusCode, Json<Valu
         name: String::from("Session Collection"),
         members: vec![],
     }));
-    let uri = "/redfish/".to_owned() + &path;
-    for node in tree {
-        if uri == node.get_uri() {
-            return (StatusCode::OK, Json(node.get_body()));
-        }
-    }
-    (StatusCode::NOT_FOUND, Json(json!({"TODO": "FIXME"}))) //FIXME
+
+    // Set as state which can be passed to all handlers
+    let state = AppState {
+        redfish_tree: tree,
+    };
+    let state = Arc::new(Mutex::new(state));
+
+    let app = Router::new()
+        .route("/redfish", get(redfish_axum::get_redfish))
+        .route("/redfish/*path", get(handle_redfish_path))
+        .with_state(state);
+    //FIXME: Figure out how to do below rather than above
+    //let app = redfish_axum::router(get(handle_redfish_path))
+    //    .with_state(state);
+    redfish_axum::layer(app)
 }
 
-fn app() -> NormalizePath<Router> {
-    redfish_axum::app(get(handle_redfish_path))
+struct AppState {
+    redfish_tree: Vec<Box<dyn RedfishNode + Send>>,
 }
 
 #[tokio::main]
