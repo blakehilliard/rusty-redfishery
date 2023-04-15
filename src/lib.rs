@@ -1,33 +1,60 @@
+use std::sync::{Arc, Mutex};
 use axum::{
-    routing::{get, MethodRouter},
-    response::Json,
+    extract::{
+        Path,
+        State,
+    },
+    http::StatusCode,
+    routing::{get},
+    response::{Json, IntoResponse},
     Router,
 };
 use tower_http::normalize_path::{NormalizePath, NormalizePathLayer};
 use tower::layer::Layer;
 use serde_json::{Value, json};
 
-/// Create the Router object for axum.
-///
-/// You will need to pass this to layer() before using it.
-/// But the calls are separate so you can attach custom states
-/// and whatever else you wish before transforming it with the
-/// redfish layers.
-pub fn router(redfish_router: MethodRouter) -> Router {
-    Router::new()
-        .route("/redfish", get(get_redfish))
-        .route("/redfish/*path", redfish_router)
+pub trait RedfishNode {
+    fn get_uri(&self) -> &str;
+    fn get_body(&self) -> serde_json::Value;
 }
 
-/// Take the Router from router() above, return a new service
-/// that adds a layer to normalize paths. This ensures that URIs
-/// will be treated the same regardless of whether this is a trailing slash.
-pub fn layer(router: Router) -> NormalizePath<Router> {
+//TODO: Can I use simple pointer instead of Box?
+pub fn app(
+    node_getter: Arc<fn(&str) -> Option<Box<dyn RedfishNode>>>,
+ ) -> NormalizePath<Router> {
+    let state = AppState {
+        node_getter: *node_getter,
+    };
+    let state = Arc::new(Mutex::new(state));
+
+    let app = Router::new()
+        .route("/redfish",
+               get(get_redfish))
+        .route("/redfish/*path",
+               get(getter))
+        .with_state(state);
+
     NormalizePathLayer::trim_trailing_slash()
-        .layer(router)
+        .layer(app)
 }
 
-//FIXME: Need to figure out how to let people just use router() and not use this directly
-pub async fn get_redfish() -> Json<Value> {
+struct AppState {
+    node_getter: fn(&str) -> Option<Box<dyn RedfishNode>>,
+}
+
+async fn getter(
+    Path(path): Path<String>,
+    State(state): State<Arc<Mutex<AppState>>>,
+) -> impl IntoResponse {
+    let uri = "/redfish/".to_owned() + &path;
+    //FIXME: Does using a mutex here defeat the purpose of async?
+    let state = state.lock().unwrap();
+    if let Some(node) = (state.node_getter)(uri.as_str()) {
+        return (StatusCode::OK, Json(node.get_body()));
+    }
+    (StatusCode::NOT_FOUND, Json(json!({"TODO": "FIXME"}))) //FIXME
+}
+
+async fn get_redfish() -> Json<Value> {
     Json(json!({ "v1": "/redfish/v1/" }))
 }

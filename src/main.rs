@@ -1,23 +1,11 @@
 use axum::{
-    extract::{
-        Path,
-        State,
-    },
-    http::StatusCode,
-    routing::get,
-    response::{Json, IntoResponse},
     ServiceExt,
     Router,
-    debug_handler,
 };
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 use tower_http::normalize_path::{NormalizePath};
 use serde_json::{Value, json};
-
-trait RedfishNode {
-    fn get_uri(&self) -> &str;
-    fn get_body(&self) -> Value;
-}
+use redfish_axum::{RedfishNode};
 
 struct RedfishCollection {
     uri: String,
@@ -82,23 +70,7 @@ impl RedfishNode for RedfishResource {
     }
 }
 
-#[debug_handler]
-async fn handle_redfish_path(
-    Path(path): Path<String>,
-    State(state): State<Arc<Mutex<AppState>>>,
-) -> impl IntoResponse {
-    let uri = "/redfish/".to_owned() + &path;
-    let state = state.lock().unwrap();
-    for node in &state.redfish_tree {
-        if uri == node.get_uri() {
-            return (StatusCode::OK, Json(node.get_body()));
-        }
-    }
-    (StatusCode::NOT_FOUND, Json(json!({"TODO": "FIXME"}))) //FIXME
-}
-
-fn app() -> NormalizePath<Router> {
-    // Create mock redfish tree
+fn get_mock_tree() -> Vec<Box<dyn RedfishNode + Send>> {
     let mut tree: Vec<Box<dyn RedfishNode + Send>> = Vec::new();
     tree.push(Box::new(RedfishResource::new(
         String::from("/redfish/v1"),
@@ -132,25 +104,23 @@ fn app() -> NormalizePath<Router> {
         name: String::from("Session Collection"),
         members: vec![],
     }));
-
-    // Set as state which can be passed to all handlers
-    let state = AppState {
-        redfish_tree: tree,
-    };
-    let state = Arc::new(Mutex::new(state));
-
-    let app = Router::new()
-        .route("/redfish", get(redfish_axum::get_redfish))
-        .route("/redfish/*path", get(handle_redfish_path))
-        .with_state(state);
-    //FIXME: Figure out how to do below rather than above
-    //let app = redfish_axum::router(get(handle_redfish_path))
-    //    .with_state(state);
-    redfish_axum::layer(app)
+    tree
 }
 
-struct AppState {
-    redfish_tree: Vec<Box<dyn RedfishNode + Send>>,
+//TODO: Any reason to make this async?
+fn get_resource(uri: &str) -> Option<Box<dyn RedfishNode>> {
+    //FIXME: get tree as input, not recreating each time
+    let tree = get_mock_tree();
+    for node in tree {
+        if uri == node.get_uri() {
+            return Some(node);
+        }
+    }
+    None
+}
+
+fn app() -> NormalizePath<Router> {
+    redfish_axum::app(Arc::new(get_resource))
 }
 
 #[tokio::main]
