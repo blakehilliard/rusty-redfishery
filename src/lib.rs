@@ -6,7 +6,7 @@ use axum::{
     },
     http::StatusCode,
     routing::{get},
-    response::{Json, IntoResponse},
+    response::{Json, Response, IntoResponse},
     Router,
 };
 use tower_http::normalize_path::{NormalizePath, NormalizePathLayer};
@@ -45,14 +45,14 @@ struct AppState {
 async fn getter(
     Path(path): Path<String>,
     State(state): State<Arc<Mutex<AppState>>>,
-) -> impl IntoResponse {
+) -> Response {
     let uri = "/redfish/".to_owned() + &path;
     //FIXME: Does using a mutex here defeat the purpose of async?
     let state = state.lock().unwrap();
     if let Some(node) = (state.node_getter)(uri.as_str()) {
-        return (StatusCode::OK, Json(node.get_body()));
+        return Json(node.get_body()).into_response();
     }
-    (StatusCode::NOT_FOUND, Json(json!({"TODO": "FIXME"}))) //FIXME
+    StatusCode::NOT_FOUND.into_response()
 }
 
 async fn get_redfish() -> Json<Value> {

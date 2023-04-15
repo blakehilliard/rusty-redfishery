@@ -135,25 +135,32 @@ async fn main() {
 mod tests {
     use super::*;
     use axum::{
+        response::Response,
         body::Body,
         http::{Request, StatusCode},
     };
     use serde_json::{json, Value};
     use tower::ServiceExt;
 
-    async fn jget(uri: &str, status_code: StatusCode) -> Value {
-        let response = app()
+    async fn get(uri: &str) -> Response {
+        app()
             .oneshot(
                 Request::get(uri)
+                    //TODO: Don't set body in a GET
                     .body(Body::from(
                         serde_json::to_vec(&json!({})).unwrap(),
                     ))
                     .unwrap(),
             )
             .await
-            .unwrap();
+            .unwrap()
+    }
+
+    async fn jget(uri: &str, status_code: StatusCode) -> Value {
+        let response = get(uri).await;
 
         assert_eq!(response.status(), status_code);
+        //FIXME: Test for application/json content-type
 
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         serde_json::from_slice(&body).unwrap()
@@ -207,7 +214,9 @@ mod tests {
 
     #[tokio::test]
     async fn not_found() {
-        let body = jget("/redfish/v1/notfound", StatusCode::NOT_FOUND).await;
-        assert_eq!(body, json!({ "TODO": "FIXME" }));
+        let response = get("/redfish/v1/notfound").await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        assert_eq!(body, "");
     }
 }

@@ -26,3 +26,4 @@ assert('"Name":"Root Service"' in res)
 
 res = get_uri("/redfish/v1/NotFound")
 assert("404 Not Found" in res)
+assert("content-length: 0" in res)
