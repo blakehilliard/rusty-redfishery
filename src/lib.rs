@@ -18,12 +18,17 @@ pub trait RedfishNode {
     fn get_body(&self) -> serde_json::Value;
 }
 
-//TODO: Can I use simple pointer instead of Box?
+pub trait RedfishTree {
+    // Return Some(RedfishNode) matching the given URI, or None if it doesn't exist
+    // TODO: async???
+    fn get(&self, uri: &str) -> Option<&Box<dyn RedfishNode + Send + Sync>>;
+}
+
 pub fn app(
-    node_getter: Arc<fn(&str) -> Option<Box<dyn RedfishNode>>>,
+    tree: Arc<dyn RedfishTree + Send + Sync>,
  ) -> NormalizePath<Router> {
     let state = AppState {
-        node_getter: *node_getter,
+        tree,
     };
     let state = Arc::new(Mutex::new(state));
 
@@ -38,8 +43,9 @@ pub fn app(
         .layer(app)
 }
 
+//TODO: Is it necessary to wrap the tree in this struct at all?
 struct AppState {
-    node_getter: fn(&str) -> Option<Box<dyn RedfishNode>>,
+    tree: Arc<dyn RedfishTree + Send + Sync>,
 }
 
 async fn getter(
@@ -49,7 +55,7 @@ async fn getter(
     let uri = "/redfish/".to_owned() + &path;
     //FIXME: Does using a mutex here defeat the purpose of async?
     let state = state.lock().unwrap();
-    if let Some(node) = (state.node_getter)(uri.as_str()) {
+    if let Some(node) = state.tree.get(uri.as_str()) {
         return Json(node.get_body()).into_response();
     }
     StatusCode::NOT_FOUND.into_response()

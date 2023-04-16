@@ -5,7 +5,7 @@ use axum::{
 use std::sync::{Arc};
 use tower_http::normalize_path::{NormalizePath};
 use serde_json::{Value, json};
-use redfish_axum::{RedfishNode};
+use redfish_axum::{RedfishNode, RedfishTree};
 
 struct RedfishCollection {
     uri: String,
@@ -70,9 +70,34 @@ impl RedfishNode for RedfishResource {
     }
 }
 
-fn get_mock_tree() -> Vec<Box<dyn RedfishNode + Send>> {
-    let mut tree: Vec<Box<dyn RedfishNode + Send>> = Vec::new();
-    tree.push(Box::new(RedfishResource::new(
+struct MockTree {
+    nodes: Vec<Box<dyn RedfishNode + Send + Sync>>,
+}
+
+impl MockTree {
+    fn new() -> Self {
+        Self { nodes: Vec::new() }
+    }
+
+    fn add_node(&mut self, node: Box<dyn RedfishNode + Send + Sync>) {
+        self.nodes.push(node);
+    }
+}
+
+impl RedfishTree for MockTree {
+    fn get(&self, uri: &str) -> Option<&Box<dyn RedfishNode + Send + Sync>> {
+        for node in &self.nodes {
+            if uri == node.get_uri() {
+                return Some(node);
+            }
+        }
+        None
+    }
+}
+
+fn get_mock_tree() -> MockTree {
+    let mut tree = MockTree::new();
+    tree.add_node(Box::new(RedfishResource::new(
         String::from("/redfish/v1"),
         String::from("ServiceRoot"),
         String::from("v1_15_0"),
@@ -86,7 +111,7 @@ fn get_mock_tree() -> Vec<Box<dyn RedfishNode + Send>> {
             },
         })
     )));
-    tree.push(Box::new(RedfishResource::new(
+    tree.add_node(Box::new(RedfishResource::new(
         String::from("/redfish/v1/SessionService"),
         String::from("SessionService"),
         String::from("v1_1_9"),
@@ -98,7 +123,7 @@ fn get_mock_tree() -> Vec<Box<dyn RedfishNode + Send>> {
             },
         })
     )));
-    tree.push(Box::new(RedfishCollection {
+    tree.add_node(Box::new(RedfishCollection {
         uri: String::from("/redfish/v1/SessionService/Sessions"),
         resource_type: String::from("SessionCollection"),
         name: String::from("Session Collection"),
@@ -107,20 +132,9 @@ fn get_mock_tree() -> Vec<Box<dyn RedfishNode + Send>> {
     tree
 }
 
-//TODO: Any reason to make this async?
-fn get_resource(uri: &str) -> Option<Box<dyn RedfishNode>> {
-    //FIXME: get tree as input, not recreating each time
-    let tree = get_mock_tree();
-    for node in tree {
-        if uri == node.get_uri() {
-            return Some(node);
-        }
-    }
-    None
-}
-
 fn app() -> NormalizePath<Router> {
-    redfish_axum::app(Arc::new(get_resource))
+    let tree = get_mock_tree();
+    redfish_axum::app(Arc::new(tree))
 }
 
 #[tokio::main]
