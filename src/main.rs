@@ -174,7 +174,7 @@ mod tests {
         let response = get(uri).await;
 
         assert_eq!(response.status(), status_code);
-        //FIXME: Test for application/json content-type
+        assert_eq!(response.headers().get("content-type").unwrap().to_str().unwrap(), "application/json");
 
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         serde_json::from_slice(&body).unwrap()
