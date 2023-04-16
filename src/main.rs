@@ -157,17 +157,8 @@ mod tests {
     use tower::ServiceExt;
 
     async fn get(uri: &str) -> Response {
-        app()
-            .oneshot(
-                Request::get(uri)
-                    //TODO: Don't set body in a GET
-                    .body(Body::from(
-                        serde_json::to_vec(&json!({})).unwrap(),
-                    ))
-                    .unwrap(),
-            )
-            .await
-            .unwrap()
+        let req = Request::get(uri).body(Body::empty()).unwrap();
+        app().oneshot(req).await.unwrap()
     }
 
     async fn jget(uri: &str, status_code: StatusCode) -> Value {
