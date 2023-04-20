@@ -211,15 +211,15 @@ mod tests {
         http::{Request, StatusCode},
     };
     use serde_json::{json, Value};
-    use tower::ServiceExt;
+    use tower::{ServiceExt, Service};
 
-    async fn get(uri: &str) -> Response {
+    async fn get(app: &mut NormalizePath<Router>, uri: &str) -> Response {
         let req = Request::get(uri).body(Body::empty()).unwrap();
-        app().oneshot(req).await.unwrap()
+        app.ready().await.unwrap().call(req).await.unwrap()
     }
 
-    async fn jget(uri: &str, status_code: StatusCode) -> Value {
-        let response = get(uri).await;
+    async fn jget(app: &mut NormalizePath<Router>, uri: &str, status_code: StatusCode) -> Value {
+        let response = get(app, uri).await;
 
         assert_eq!(response.status(), status_code);
         assert_eq!(response.headers().get("content-type").unwrap().to_str().unwrap(), "application/json");
@@ -228,14 +228,14 @@ mod tests {
         serde_json::from_slice(&body).unwrap()
     }
 
-    async fn post(uri: &str, req: serde_json::Value) -> Response {
+    async fn post(app: &mut NormalizePath<Router>, uri: &str, req: serde_json::Value) -> Response {
         let body = Body::from(serde_json::to_vec(&req).unwrap());
         let req = Request::post(uri).header("Content-Type", "application/json").body(body).unwrap();
-        app().oneshot(req).await.unwrap()
+        app.ready().await.unwrap().call(req).await.unwrap()
     }
 
-    async fn jpost(uri: &str, req: serde_json::Value, status_code: StatusCode) -> Value {
-        let response = post(uri, req).await;
+    async fn jpost(app: &mut NormalizePath<Router>, uri: &str, req: serde_json::Value, status_code: StatusCode) -> Value {
+        let response = post(app, uri, req).await;
         assert_eq!(response.status(), status_code);
         assert_eq!(response.headers().get("content-type").unwrap().to_str().unwrap(), "application/json");
 
@@ -245,13 +245,15 @@ mod tests {
 
     #[tokio::test]
     async fn base_redfish_path() {
-        let body = jget("/redfish", StatusCode::OK).await;
+        let mut app = app();
+        let body = jget(&mut app, "/redfish", StatusCode::OK).await;
         assert_eq!(body, json!({ "v1": "/redfish/v1/" }));
     }
 
     #[tokio::test]
     async fn redfish_v1() {
-        let body = jget("/redfish/v1", StatusCode::OK).await;
+        let mut app = app();
+        let body = jget(&mut app, "/redfish/v1", StatusCode::OK).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1",
             "@odata.type": "#ServiceRoot.v1_15_0.ServiceRoot",
@@ -267,7 +269,8 @@ mod tests {
 
     #[tokio::test]
     async fn session_service() {
-        let body = jget("/redfish/v1/SessionService/", StatusCode::OK).await;
+        let mut app = app();
+        let body = jget(&mut app, "/redfish/v1/SessionService/", StatusCode::OK).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService",
             "@odata.type": "#SessionService.v1_1_9.SessionService",
@@ -279,7 +282,8 @@ mod tests {
 
     #[tokio::test]
     async fn empty_session_collection() {
-        let body = jget("/redfish/v1/SessionService/Sessions", StatusCode::OK).await;
+        let mut app = app();
+        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions",
             "@odata.type": "#SessionCollection.SessionCollection",
@@ -301,8 +305,19 @@ mod tests {
 
     #[tokio::test]
     async fn post_session() {
+        let mut app = app();
         let data = json!({"UserName": "Obiwan", "Password": "n/a"});
-        let body = jpost("/redfish/v1/SessionService/Sessions", data, StatusCode::CREATED).await;
+        let body = jpost(&mut app, "/redfish/v1/SessionService/Sessions", data, StatusCode::CREATED).await;
+        assert_eq!(body, json!({
+            "@odata.id": "/redfish/v1/SessionService/Sessions/1",
+            "@odata.type": "#Session.v1_6_0.Session",
+            "Id": "1",
+            "Name": "Session 1",
+            "UserName": "Obiwan",
+            "Password": serde_json::Value::Null,
+        }));
+
+        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/1", StatusCode::OK).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions/1",
             "@odata.type": "#Session.v1_6_0.Session",
@@ -313,16 +328,6 @@ mod tests {
         }));
 
         /* FIXME
-        let body = jget("/redfish/v1/SessionService/Sessions/1", StatusCode::OK).await;
-        assert_eq!(body, json!({
-            "@odata.id": "/redfish/v1/SessionService/Sessions/1",
-            "@odata.type": "#Session.v1_6_0.Session",
-            "Id": "1",
-            "Name": "Session 1",
-            "UserName": "Obiwan",
-            "Password": serde_json::Value::Null,
-        }));
-
         let body = jget("/redfish/v1/SessionService/Sessions", StatusCode::OK).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions",
@@ -338,7 +343,8 @@ mod tests {
 
     #[tokio::test]
     async fn post_not_found() {
-        let response = post("/redfish/v1/notfound", json!({})).await;
+        let mut app = app();
+        let response = post(&mut app, "/redfish/v1/notfound", json!({})).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         assert_eq!(body, "");
@@ -346,7 +352,8 @@ mod tests {
 
     #[tokio::test]
     async fn get_not_found() {
-        let response = get("/redfish/v1/notfound").await;
+        let mut app = app();
+        let response = get(&mut app, "/redfish/v1/notfound").await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         assert_eq!(body, "");

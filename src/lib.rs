@@ -58,7 +58,8 @@ async fn getter(
     State(state): State<AppState>,
 ) -> Response {
     let uri = "/redfish/".to_owned() + &path;
-    if let Some(node) = state.tree.lock().unwrap().get(uri.as_str()) {
+    let tree = state.tree.lock().unwrap();
+    if let Some(node) = tree.get(uri.as_str()) {
         return Json(node.get_body()).into_response();
     }
     StatusCode::NOT_FOUND.into_response()
