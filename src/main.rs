@@ -2,7 +2,6 @@ use axum::{
     ServiceExt,
     Router,
 };
-use std::sync::{Arc};
 use tower_http::normalize_path::{NormalizePath};
 use serde_json::{Value, json};
 use redfish_axum::{RedfishNode, RedfishTree};
@@ -33,6 +32,13 @@ impl RedfishNode for RedfishCollection {
     }
 }
 
+fn get_uri_id(uri: &str) -> String {
+    match uri {
+        "/redfish/v1" => String::from("RootService"),
+        _ => String::from(std::path::Path::new(uri).file_name().unwrap().to_str().unwrap())
+    }
+}
+
 #[allow(dead_code)]
 struct RedfishResource {
     uri: String, //TODO: Enforce things here? Does DMTF recommend trailing slash or no?
@@ -44,18 +50,15 @@ struct RedfishResource {
 }
 
 impl RedfishResource {
-    fn new(uri: String, resource_type: String, schema_version: String, term_name: String, name: String, rest: Value) -> Self {
+    fn new(uri: &str, resource_type: String, schema_version: String, term_name: String, name: String, rest: Value) -> Self {
         let mut body = rest;
         body["@odata.id"] = json!(uri);
         body["@odata.type"] = json!(format!("#{}.{}.{}", resource_type, schema_version, term_name));
-        let id = match resource_type.as_str() {
-            "ServiceRoot" => String::from("RootService"),
-            _ => String::from(std::path::Path::new(uri.as_str()).file_name().unwrap().to_str().unwrap())
-        };
+        let id = get_uri_id(uri);
         body["Id"] = json!(id);
         body["Name"] = json!(name);
         Self {
-            uri, resource_type, schema_version, term_name, id, body
+            uri: String::from(uri), resource_type, schema_version, term_name, id, body
         }
     }
 }
@@ -71,6 +74,7 @@ impl RedfishNode for RedfishResource {
 }
 
 struct MockTree {
+    //FIXME: Would be better as a Map
     nodes: Vec<Box<dyn RedfishNode + Send + Sync>>,
 }
 
@@ -93,12 +97,65 @@ impl RedfishTree for MockTree {
         }
         None
     }
+
+    fn create(&mut self, uri: &str, req: serde_json::Value) -> Option<&Box<dyn RedfishNode + Send + Sync>> {
+        for node in &self.nodes {
+            if uri == node.get_uri() {
+                // TODO: Don't hardcode this!
+                if uri != "/redfish/v1/SessionService/Sessions" {
+                    return None;
+                }
+
+                // Look at existing members to see next Id to pick
+                // TODO: Does this need to protect against parallel runs?
+                // TODO: Less catastrophic error handling
+                // TODO: Use members prop directly?
+                let collection = self.get(uri).unwrap();
+                let body = collection.get_body();
+                let members = body
+                    .as_object().unwrap()
+                    .get("Members").unwrap()
+                    .as_array().unwrap();
+                let mut highest = 0;
+                for member in members {
+                    let id = get_uri_id(member.as_object().unwrap().get("@odata.id").unwrap().as_str().unwrap());
+                    let id = id.parse().unwrap();
+                    if id > highest {
+                        highest = id;
+                    }
+                }
+                let id = (highest + 1).to_string();
+                let member_uri = format!("{}/{}", collection.get_uri(), id);
+
+                // Create new resource and add it to the tree.
+                let new_member = Box::new(RedfishResource::new(
+                    member_uri.as_str(),
+                    String::from("Session"),
+                    String::from("v1_6_0"),
+                    String::from("Session"),
+                    String::from(format!("Session {}", id)),
+                    json!({
+                        "UserName": req.as_object().unwrap().get("UserName").unwrap().as_str(),
+                        "Password": serde_json::Value::Null,
+                    }),
+                ));
+                self.add_node(new_member);
+
+                // FIXME: Update members of collection.
+                //collection.members.push(uri);
+
+                // Return new resource.
+                return self.get(member_uri.as_str());
+            }
+        }
+        None
+    }
 }
 
 fn get_mock_tree() -> MockTree {
     let mut tree = MockTree::new();
     tree.add_node(Box::new(RedfishResource::new(
-        String::from("/redfish/v1"),
+        "/redfish/v1",
         String::from("ServiceRoot"),
         String::from("v1_15_0"),
         String::from("ServiceRoot"),
@@ -112,7 +169,7 @@ fn get_mock_tree() -> MockTree {
         })
     )));
     tree.add_node(Box::new(RedfishResource::new(
-        String::from("/redfish/v1/SessionService"),
+        "/redfish/v1/SessionService",
         String::from("SessionService"),
         String::from("v1_1_9"),
         String::from("SessionService"),
@@ -134,7 +191,7 @@ fn get_mock_tree() -> MockTree {
 
 fn app() -> NormalizePath<Router> {
     let tree = get_mock_tree();
-    redfish_axum::app(Arc::new(tree))
+    redfish_axum::app(tree)
 }
 
 #[tokio::main]
@@ -164,6 +221,21 @@ mod tests {
     async fn jget(uri: &str, status_code: StatusCode) -> Value {
         let response = get(uri).await;
 
+        assert_eq!(response.status(), status_code);
+        assert_eq!(response.headers().get("content-type").unwrap().to_str().unwrap(), "application/json");
+
+        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        serde_json::from_slice(&body).unwrap()
+    }
+
+    async fn post(uri: &str, req: serde_json::Value) -> Response {
+        let body = Body::from(serde_json::to_vec(&req).unwrap());
+        let req = Request::post(uri).header("Content-Type", "application/json").body(body).unwrap();
+        app().oneshot(req).await.unwrap()
+    }
+
+    async fn jpost(uri: &str, req: serde_json::Value, status_code: StatusCode) -> Value {
+        let response = post(uri, req).await;
         assert_eq!(response.status(), status_code);
         assert_eq!(response.headers().get("content-type").unwrap().to_str().unwrap(), "application/json");
 
@@ -217,8 +289,63 @@ mod tests {
         }));
     }
 
+    /* FIXME
     #[tokio::test]
-    async fn not_found() {
+    async fn post_not_allowed() {
+        let body = jpost("/redfish/v1", json!({}), StatusCode::METHOD_NOT_ALLOWED).await;
+        assert_eq!(body, json!({
+            "TODO": "FIXME",
+        }));
+    }
+    */
+
+    #[tokio::test]
+    async fn post_session() {
+        let data = json!({"UserName": "Obiwan", "Password": "n/a"});
+        let body = jpost("/redfish/v1/SessionService/Sessions", data, StatusCode::CREATED).await;
+        assert_eq!(body, json!({
+            "@odata.id": "/redfish/v1/SessionService/Sessions/1",
+            "@odata.type": "#Session.v1_6_0.Session",
+            "Id": "1",
+            "Name": "Session 1",
+            "UserName": "Obiwan",
+            "Password": serde_json::Value::Null,
+        }));
+
+        /* FIXME
+        let body = jget("/redfish/v1/SessionService/Sessions/1", StatusCode::OK).await;
+        assert_eq!(body, json!({
+            "@odata.id": "/redfish/v1/SessionService/Sessions/1",
+            "@odata.type": "#Session.v1_6_0.Session",
+            "Id": "1",
+            "Name": "Session 1",
+            "UserName": "Obiwan",
+            "Password": serde_json::Value::Null,
+        }));
+
+        let body = jget("/redfish/v1/SessionService/Sessions", StatusCode::OK).await;
+        assert_eq!(body, json!({
+            "@odata.id": "/redfish/v1/SessionService/Sessions",
+            "@odata.type": "#SessionCollection.SessionCollection",
+            "Name": "Session Collection",
+            "Members" : [
+                {"@odata.id": "/redfish/v1/SessionService/Sessions/1"}
+            ],
+            "Members@odata.count": 1,
+        }));
+        */
+    }
+
+    #[tokio::test]
+    async fn post_not_found() {
+        let response = post("/redfish/v1/notfound", json!({})).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        assert_eq!(body, "");
+    }
+
+    #[tokio::test]
+    async fn get_not_found() {
         let response = get("/redfish/v1/notfound").await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
