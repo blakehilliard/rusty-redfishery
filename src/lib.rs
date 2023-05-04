@@ -13,7 +13,6 @@ use tower_http::normalize_path::{NormalizePath, NormalizePathLayer};
 use tower::layer::Layer;
 use serde_json::{Value, json};
 
-// TODO: Just put ": Send + Sync" here instead of sprinkled everywhere?
 pub trait RedfishNode {
     fn get_uri(&self) -> &str;
     fn get_body(&self) -> serde_json::Value;
