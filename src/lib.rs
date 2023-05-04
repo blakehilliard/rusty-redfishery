@@ -22,12 +22,12 @@ pub trait RedfishNode {
 // TODO: Should all these methods be async?
 pub trait RedfishTree {
     // Return Some(RedfishNode) matching the given URI, or None if it doesn't exist
-    fn get(&self, uri: &str) -> Option<&Box<dyn RedfishNode + Send + Sync>>;
+    fn get(&self, uri: &str) -> Option<&dyn RedfishNode>;
 
     // Create a resource, given the collction URI and JSON input.
     // Return Some(RedfishNode) of the new resource, or None on fail.
     // TODO: Properly handle various error cases.
-    fn create(&mut self, uri: &str, req: serde_json::Value) -> Option<&Box<dyn RedfishNode + Send + Sync>>;
+    fn create(&mut self, uri: &str, req: serde_json::Value) -> Option<&dyn RedfishNode>;
 }
 
 pub fn app<T: RedfishTree + Send + Sync + 'static>(tree: T) -> NormalizePath<Router> {

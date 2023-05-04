@@ -75,22 +75,35 @@ impl RedfishNode for RedfishResource {
 
 struct MockTree {
     //FIXME: Would be better as a Map
-    nodes: Vec<Box<dyn RedfishNode + Send + Sync>>,
+    resources: Vec<RedfishResource>,
+    collections: Vec<RedfishCollection>,
 }
 
 impl MockTree {
     fn new() -> Self {
-        Self { nodes: Vec::new() }
+        Self {
+            resources: Vec::new(),
+            collections: Vec::new(),
+         }
     }
 
-    fn add_node(&mut self, node: Box<dyn RedfishNode + Send + Sync>) {
-        self.nodes.push(node);
+    fn add_resource(&mut self, resource: RedfishResource) {
+        self.resources.push(resource);
+    }
+
+    fn add_collection(&mut self, collection: RedfishCollection) {
+        self.collections.push(collection);
     }
 }
 
 impl RedfishTree for MockTree {
-    fn get(&self, uri: &str) -> Option<&Box<dyn RedfishNode + Send + Sync>> {
-        for node in &self.nodes {
+    fn get(&self, uri: &str) -> Option<&dyn RedfishNode> {
+        for node in &self.resources {
+            if uri == node.get_uri() {
+                return Some(node);
+            }
+        }
+        for node in &self.collections {
             if uri == node.get_uri() {
                 return Some(node);
             }
@@ -98,27 +111,19 @@ impl RedfishTree for MockTree {
         None
     }
 
-    fn create(&mut self, uri: &str, req: serde_json::Value) -> Option<&Box<dyn RedfishNode + Send + Sync>> {
-        for node in &self.nodes {
-            if uri == node.get_uri() {
+    fn create(&mut self, uri: &str, req: serde_json::Value) -> Option<&dyn RedfishNode> {
+        for collection in self.collections.iter_mut() {
+            if uri == collection.get_uri() {
                 // TODO: Don't hardcode this!
                 if uri != "/redfish/v1/SessionService/Sessions" {
                     return None;
                 }
 
                 // Look at existing members to see next Id to pick
-                // TODO: Does this need to protect against parallel runs?
                 // TODO: Less catastrophic error handling
-                // TODO: Use members prop directly?
-                let collection = self.get(uri).unwrap();
-                let body = collection.get_body();
-                let members = body
-                    .as_object().unwrap()
-                    .get("Members").unwrap()
-                    .as_array().unwrap();
                 let mut highest = 0;
-                for member in members {
-                    let id = get_uri_id(member.as_object().unwrap().get("@odata.id").unwrap().as_str().unwrap());
+                for member in collection.members.iter() {
+                    let id = get_uri_id(member.as_str());
                     let id = id.parse().unwrap();
                     if id > highest {
                         highest = id;
@@ -128,7 +133,7 @@ impl RedfishTree for MockTree {
                 let member_uri = format!("{}/{}", collection.get_uri(), id);
 
                 // Create new resource and add it to the tree.
-                let new_member = Box::new(RedfishResource::new(
+                let new_member = RedfishResource::new(
                     member_uri.as_str(),
                     String::from("Session"),
                     String::from("v1_6_0"),
@@ -138,11 +143,11 @@ impl RedfishTree for MockTree {
                         "UserName": req.as_object().unwrap().get("UserName").unwrap().as_str(),
                         "Password": serde_json::Value::Null,
                     }),
-                ));
-                self.add_node(new_member);
+                );
+                self.resources.push(new_member);
 
-                // FIXME: Update members of collection.
-                //collection.members.push(uri);
+                // Update members of collection.
+                collection.members.push(String::from(uri));
 
                 // Return new resource.
                 return self.get(member_uri.as_str());
@@ -154,7 +159,7 @@ impl RedfishTree for MockTree {
 
 fn get_mock_tree() -> MockTree {
     let mut tree = MockTree::new();
-    tree.add_node(Box::new(RedfishResource::new(
+    tree.add_resource(RedfishResource::new(
         "/redfish/v1",
         String::from("ServiceRoot"),
         String::from("v1_15_0"),
@@ -167,8 +172,8 @@ fn get_mock_tree() -> MockTree {
                 },
             },
         })
-    )));
-    tree.add_node(Box::new(RedfishResource::new(
+    ));
+    tree.add_resource(RedfishResource::new(
         "/redfish/v1/SessionService",
         String::from("SessionService"),
         String::from("v1_1_9"),
@@ -179,13 +184,13 @@ fn get_mock_tree() -> MockTree {
                 "@odata.id": "/redfish/v1/SessionService/Sessions"
             },
         })
-    )));
-    tree.add_node(Box::new(RedfishCollection {
+    ));
+    tree.add_collection(RedfishCollection {
         uri: String::from("/redfish/v1/SessionService/Sessions"),
         resource_type: String::from("SessionCollection"),
         name: String::from("Session Collection"),
         members: vec![],
-    }));
+    });
     tree
 }
 
@@ -327,8 +332,7 @@ mod tests {
             "Password": serde_json::Value::Null,
         }));
 
-        /* FIXME
-        let body = jget("/redfish/v1/SessionService/Sessions", StatusCode::OK).await;
+        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions",
             "@odata.type": "#SessionCollection.SessionCollection",
@@ -338,7 +342,6 @@ mod tests {
             ],
             "Members@odata.count": 1,
         }));
-        */
     }
 
     #[tokio::test]
