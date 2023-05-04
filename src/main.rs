@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use axum::{
     ServiceExt,
     Router,
@@ -19,14 +21,17 @@ impl RedfishNode for RedfishCollection {
     }
 
     fn get_body(&self) -> Value {
-        //FIXME: Support more than 0 members
+        let mut member_list = Vec::new();
+        for member in self.members.iter() {
+            let mut member_obj = HashMap::new();
+            member_obj.insert(String::from("@odata.id"), member);
+            member_list.push(member_obj);
+        }
         json!({
             "@odata.id": self.uri,
             "@odata.type": format!("#{}.{}", self.resource_type, self.resource_type),
             "Name": self.name,
-            "Members": [
-
-            ],
+            "Members": member_list,
             "Members@odata.count": self.members.len(),
         })
     }
@@ -147,7 +152,7 @@ impl RedfishTree for MockTree {
                 self.resources.push(new_member);
 
                 // Update members of collection.
-                collection.members.push(String::from(uri));
+                collection.members.push(member_uri.clone());
 
                 // Return new resource.
                 return self.get(member_uri.as_str());
