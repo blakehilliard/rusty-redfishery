@@ -260,9 +260,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn redfish_v1() {
+    async fn head_redfish_v1() {
         let mut app = app();
-        let body = jget(&mut app, "/redfish/v1", StatusCode::OK).await;
+        let req = Request::head("/redfish/v1").body(Body::empty()).unwrap();
+        let response = app.ready().await.unwrap().call(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers().get("content-type").unwrap().to_str().unwrap(), "application/json");
+        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        assert_eq!(body, "");
+    }
+
+    #[tokio::test]
+    async fn get_redfish_v1() {
+        let mut app = app();
+        let response = get(&mut app, "/redfish/v1").await;
+        assert_eq!(response.status(), StatusCode::OK);
+        //FIXME: assert_eq!(response.headers().get("allow").unwrap().to_str().unwrap(), "GET");
+
+        let body = get_response_json(response).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1",
             "@odata.type": "#ServiceRoot.v1_15_0.ServiceRoot",
@@ -362,6 +377,16 @@ mod tests {
     async fn get_not_found() {
         let mut app = app();
         let response = get(&mut app, "/redfish/v1/notfound").await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        assert_eq!(body, "");
+    }
+
+    #[tokio::test]
+    async fn head_not_found() {
+        let mut app = app();
+        let req = Request::head("/redfish/v1/notfound").body(Body::empty()).unwrap();
+        let response = app.ready().await.unwrap().call(req).await.unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         assert_eq!(body, "");
