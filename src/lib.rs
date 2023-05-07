@@ -62,7 +62,10 @@ async fn getter(
     let uri = "/redfish/".to_owned() + &path;
     let tree = state.tree.lock().unwrap();
     if let Some(node) = tree.get(uri.as_str()) {
-        return JsonGetResponse(node.get_body()).into_response();
+        return JsonGetResponse {
+            data: node.get_body(),
+            allow: String::from("GET,HEAD"),
+        }.into_response();
     }
     StatusCode::NOT_FOUND.into_response()
 }
@@ -80,5 +83,8 @@ async fn poster(
 }
 
 async fn get_redfish() -> JsonGetResponse<Value> {
-    JsonGetResponse(json!({ "v1": "/redfish/v1/" }))
+    JsonGetResponse {
+        data: json!({ "v1": "/redfish/v1/" }),
+        allow: String::from("GET,HEAD"),
+    }
 }

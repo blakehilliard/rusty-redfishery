@@ -8,13 +8,9 @@ use axum::{
     response::{Response, IntoResponse},
 };
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct JsonGetResponse<T>(pub T);
-
-impl<T> From<T> for JsonGetResponse<T> {
-    fn from(inner: T) -> Self {
-        Self(inner)
-    }
+pub struct JsonGetResponse<T> {
+    pub data: T,
+    pub allow: String,
 }
 
 impl<T> IntoResponse for JsonGetResponse<T>
@@ -23,7 +19,7 @@ where
 {
     fn into_response(self) -> Response {
         let mut buf = BytesMut::with_capacity(128).writer();
-        match serde_json::to_writer(&mut buf, &self.0) {
+        match serde_json::to_writer(&mut buf, &self.data) {
             Ok(()) => (
                 [(
                     header::CONTENT_TYPE,
@@ -31,7 +27,7 @@ where
                 )],
                 [(
                     header::ALLOW,
-                    HeaderValue::from_static("GET,HEAD"),
+                    self.allow.as_str(),
                 )],
                 buf.into_inner().freeze(),
             )
