@@ -12,6 +12,7 @@ use axum::{
 use tower_http::normalize_path::{NormalizePath, NormalizePathLayer};
 use tower::layer::Layer;
 use serde_json::{Value, json};
+use http::header;
 
 mod json;
 use json::JsonGetResponse;
@@ -64,23 +65,13 @@ async fn getter(
 ) -> Response {
     let uri = "/redfish/".to_owned() + &path;
     let tree = state.tree.lock().unwrap();
-    if let Some(node) = tree.get(uri.as_str()) {
-        let mut allow = String::from("GET,HEAD");
-        if node.can_delete() {
-            allow.push_str(",DELETE");
-        }
-        if node.can_patch() {
-            allow.push_str(",PATCH");
-        }
-        if node.can_post() {
-            allow.push_str(",POST");
-        }
-        return JsonGetResponse {
+    match tree.get(uri.as_str()) {
+        Some(node) => JsonGetResponse {
             data: node.get_body(),
-            allow: allow,
-        }.into_response();
+            allow: node_to_allow(node),
+        }.into_response(),
+        _ => StatusCode::NOT_FOUND.into_response()
     }
-    StatusCode::NOT_FOUND.into_response()
 }
 
 async fn poster(
@@ -89,10 +80,20 @@ async fn poster(
     Json(payload): Json<serde_json::Value>,
 ) -> Response {
     let uri = "/redfish/".to_owned() + &path;
-    if let Some(node) = state.tree.lock().unwrap().create(uri.as_str(), payload) {
+    let mut tree = state.tree.lock().unwrap();
+    if let Some(node) = tree.create(uri.as_str(), payload) {
         return (StatusCode::CREATED, Json(node.get_body())).into_response();
     }
-    StatusCode::NOT_FOUND.into_response()
+    match tree.get(uri.as_str()) {
+        Some(node) => (
+            StatusCode::METHOD_NOT_ALLOWED,
+            [(
+                header::ALLOW,
+                node_to_allow(node),
+            )],
+        ).into_response(),
+        _ => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 async fn get_redfish() -> JsonGetResponse<Value> {
@@ -100,4 +101,18 @@ async fn get_redfish() -> JsonGetResponse<Value> {
         data: json!({ "v1": "/redfish/v1/" }),
         allow: String::from("GET,HEAD"),
     }
+}
+
+fn node_to_allow(node: &dyn RedfishNode) -> String {
+    let mut allow = String::from("GET,HEAD");
+    if node.can_delete() {
+        allow.push_str(",DELETE");
+    }
+    if node.can_patch() {
+        allow.push_str(",PATCH");
+    }
+    if node.can_post() {
+        allow.push_str(",POST");
+    }
+    allow
 }

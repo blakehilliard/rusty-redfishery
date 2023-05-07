@@ -152,6 +152,7 @@ impl RedfishTree for MockTree {
                 let member_uri = format!("{}/{}", collection.get_uri(), id);
 
                 // Create new resource and add it to the tree.
+                // TODO: Move lots of this stuff into SessionCollection struct???
                 let new_member = RedfishResource::new(
                     member_uri.as_str(),
                     String::from("Session"),
@@ -332,16 +333,14 @@ mod tests {
         }));
     }
 
-    /* FIXME
     #[tokio::test]
     async fn post_not_allowed() {
-        Must include ALLOW header too!
-        let body = jpost("/redfish/v1", json!({}), StatusCode::METHOD_NOT_ALLOWED).await;
-        assert_eq!(body, json!({
-            "TODO": "FIXME",
-        }));
+        let mut app = app();
+        let data = json!({});
+        let response = post(&mut app, "/redfish/v1", data).await;
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(response.headers().get("allow").unwrap().to_str().unwrap(), "GET,HEAD");
     }
-    */
 
     #[tokio::test]
     async fn post_session() {
