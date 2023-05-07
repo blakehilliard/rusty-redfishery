@@ -228,14 +228,16 @@ mod tests {
         app.ready().await.unwrap().call(req).await.unwrap()
     }
 
-    async fn jget(app: &mut NormalizePath<Router>, uri: &str, status_code: StatusCode) -> Value {
-        let response = get(app, uri).await;
-
-        assert_eq!(response.status(), status_code);
+    async fn get_response_json(response: Response) -> Value {
         assert_eq!(response.headers().get("content-type").unwrap().to_str().unwrap(), "application/json");
-
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         serde_json::from_slice(&body).unwrap()
+    }
+
+    async fn jget(app: &mut NormalizePath<Router>, uri: &str, status_code: StatusCode) -> Value {
+        let response = get(app, uri).await;
+        assert_eq!(response.status(), status_code);
+        get_response_json(response).await
     }
 
     async fn post(app: &mut NormalizePath<Router>, uri: &str, req: serde_json::Value) -> Response {
@@ -247,10 +249,7 @@ mod tests {
     async fn jpost(app: &mut NormalizePath<Router>, uri: &str, req: serde_json::Value, status_code: StatusCode) -> Value {
         let response = post(app, uri, req).await;
         assert_eq!(response.status(), status_code);
-        assert_eq!(response.headers().get("content-type").unwrap().to_str().unwrap(), "application/json");
-
-        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
-        serde_json::from_slice(&body).unwrap()
+        get_response_json(response).await
     }
 
     #[tokio::test]
@@ -306,6 +305,7 @@ mod tests {
     /* FIXME
     #[tokio::test]
     async fn post_not_allowed() {
+        Must include ALLOW header too!
         let body = jpost("/redfish/v1", json!({}), StatusCode::METHOD_NOT_ALLOWED).await;
         assert_eq!(body, json!({
             "TODO": "FIXME",
