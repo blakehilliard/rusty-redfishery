@@ -234,9 +234,10 @@ mod tests {
         serde_json::from_slice(&body).unwrap()
     }
 
-    async fn jget(app: &mut NormalizePath<Router>, uri: &str, status_code: StatusCode) -> Value {
+    async fn jget(app: &mut NormalizePath<Router>, uri: &str, status_code: StatusCode, allow: &str) -> Value {
         let response = get(app, uri).await;
         assert_eq!(response.status(), status_code);
+        assert_eq!(response.headers().get("allow").unwrap().to_str().unwrap(), allow);
         get_response_json(response).await
     }
 
@@ -255,7 +256,7 @@ mod tests {
     #[tokio::test]
     async fn base_redfish_path() {
         let mut app = app();
-        let body = jget(&mut app, "/redfish", StatusCode::OK).await;
+        let body = jget(&mut app, "/redfish", StatusCode::OK, "GET,HEAD").await;
         assert_eq!(body, json!({ "v1": "/redfish/v1/" }));
     }
 
@@ -273,11 +274,7 @@ mod tests {
     #[tokio::test]
     async fn get_redfish_v1() {
         let mut app = app();
-        let response = get(&mut app, "/redfish/v1").await;
-        assert_eq!(response.status(), StatusCode::OK);
-        //FIXME: assert_eq!(response.headers().get("allow").unwrap().to_str().unwrap(), "GET");
-
-        let body = get_response_json(response).await;
+        let body = jget(&mut app, "/redfish/v1", StatusCode::OK, "GET,HEAD").await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1",
             "@odata.type": "#ServiceRoot.v1_15_0.ServiceRoot",
@@ -294,7 +291,7 @@ mod tests {
     #[tokio::test]
     async fn session_service() {
         let mut app = app();
-        let body = jget(&mut app, "/redfish/v1/SessionService/", StatusCode::OK).await;
+        let body = jget(&mut app, "/redfish/v1/SessionService/", StatusCode::OK, "GET,HEAD").await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService",
             "@odata.type": "#SessionService.v1_1_9.SessionService",
@@ -307,7 +304,7 @@ mod tests {
     #[tokio::test]
     async fn empty_session_collection() {
         let mut app = app();
-        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK).await;
+        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, "GET,HEAD,POST").await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions",
             "@odata.type": "#SessionCollection.SessionCollection",
@@ -333,6 +330,7 @@ mod tests {
         let mut app = app();
         let data = json!({"UserName": "Obiwan", "Password": "n/a"});
         let body = jpost(&mut app, "/redfish/v1/SessionService/Sessions", data, StatusCode::CREATED).await;
+        //FIXME: Test Location header!
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions/1",
             "@odata.type": "#Session.v1_6_0.Session",
@@ -342,7 +340,7 @@ mod tests {
             "Password": serde_json::Value::Null,
         }));
 
-        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/1", StatusCode::OK).await;
+        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/1", StatusCode::OK, "GET,HEAD,DELETE").await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions/1",
             "@odata.type": "#Session.v1_6_0.Session",
@@ -352,7 +350,7 @@ mod tests {
             "Password": serde_json::Value::Null,
         }));
 
-        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK).await;
+        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, "GET,HEAD,POST").await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions",
             "@odata.type": "#SessionCollection.SessionCollection",
