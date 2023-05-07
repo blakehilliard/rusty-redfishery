@@ -13,6 +13,7 @@ struct RedfishCollection {
     resource_type: String,
     name: String,
     members: Vec<String>,
+    postable: bool,
 }
 
 impl RedfishNode for RedfishCollection {
@@ -35,6 +36,12 @@ impl RedfishNode for RedfishCollection {
             "Members@odata.count": self.members.len(),
         })
     }
+
+    fn can_delete(&self) -> bool { false }
+
+    fn can_patch(&self) -> bool { false }
+
+    fn can_post(&self) -> bool { self.postable }
 }
 
 fn get_uri_id(uri: &str) -> String {
@@ -52,10 +59,11 @@ struct RedfishResource {
     term_name: String, //TODO: Constructor where this is optional and derived from resource_type
     id: String, //TODO: Better name?
     body: Value, //TODO: Enforce map
+    deletable: bool,
 }
 
 impl RedfishResource {
-    fn new(uri: &str, resource_type: String, schema_version: String, term_name: String, name: String, rest: Value) -> Self {
+    fn new(uri: &str, resource_type: String, schema_version: String, term_name: String, name: String, deletable: bool, rest: Value) -> Self {
         let mut body = rest;
         body["@odata.id"] = json!(uri);
         body["@odata.type"] = json!(format!("#{}.{}.{}", resource_type, schema_version, term_name));
@@ -63,7 +71,7 @@ impl RedfishResource {
         body["Id"] = json!(id);
         body["Name"] = json!(name);
         Self {
-            uri: String::from(uri), resource_type, schema_version, term_name, id, body
+            uri: String::from(uri), resource_type, schema_version, term_name, id, body, deletable
         }
     }
 }
@@ -76,6 +84,12 @@ impl RedfishNode for RedfishResource {
     fn get_body(&self) -> Value {
         self.body.clone()
     }
+
+    fn can_delete(&self) -> bool { self.deletable }
+
+    fn can_patch(&self) -> bool { false }
+
+    fn can_post(&self) -> bool { false }
 }
 
 struct MockTree {
@@ -144,6 +158,7 @@ impl RedfishTree for MockTree {
                     String::from("v1_6_0"),
                     String::from("Session"),
                     String::from(format!("Session {}", id)),
+                    true,
                     json!({
                         "UserName": req.as_object().unwrap().get("UserName").unwrap().as_str(),
                         "Password": serde_json::Value::Null,
@@ -170,6 +185,7 @@ fn get_mock_tree() -> MockTree {
         String::from("v1_15_0"),
         String::from("ServiceRoot"),
         String::from("Root Service"),
+        false,
         json!({
             "Links": {
                 "Sessions": {
@@ -184,6 +200,7 @@ fn get_mock_tree() -> MockTree {
         String::from("v1_1_9"),
         String::from("SessionService"),
         String::from("Session Service"),
+        false,
         json!({
             "Sessions": {
                 "@odata.id": "/redfish/v1/SessionService/Sessions"
@@ -195,6 +212,7 @@ fn get_mock_tree() -> MockTree {
         resource_type: String::from("SessionCollection"),
         name: String::from("Session Collection"),
         members: vec![],
+        postable: true,
     });
     tree
 }

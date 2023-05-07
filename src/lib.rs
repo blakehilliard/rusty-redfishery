@@ -19,6 +19,9 @@ use json::JsonGetResponse;
 pub trait RedfishNode {
     fn get_uri(&self) -> &str;
     fn get_body(&self) -> serde_json::Value;
+    fn can_post(&self) -> bool;
+    fn can_delete(&self) -> bool;
+    fn can_patch(&self) -> bool;
 }
 
 // TODO: Should all these methods be async?
@@ -62,9 +65,19 @@ async fn getter(
     let uri = "/redfish/".to_owned() + &path;
     let tree = state.tree.lock().unwrap();
     if let Some(node) = tree.get(uri.as_str()) {
+        let mut allow = String::from("GET,HEAD");
+        if node.can_delete() {
+            allow.push_str(",DELETE");
+        }
+        if node.can_patch() {
+            allow.push_str(",PATCH");
+        }
+        if node.can_post() {
+            allow.push_str(",POST");
+        }
         return JsonGetResponse {
             data: node.get_body(),
-            allow: String::from("GET,HEAD"),
+            allow: allow,
         }.into_response();
     }
     StatusCode::NOT_FOUND.into_response()
