@@ -29,6 +29,10 @@ where
                     header::ALLOW,
                     self.allow.as_str(),
                 )],
+                [(
+                    "OData-Version",
+                    "4.0",
+                )],
                 buf.into_inner().freeze(),
             )
                 .into_response(),

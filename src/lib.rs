@@ -84,10 +84,8 @@ async fn poster(
     if let Some(node) = tree.create(uri.as_str(), payload) {
         return (
             StatusCode::CREATED,
-            [(
-                header::LOCATION,
-                node.get_uri(),
-            )],
+            [(header::LOCATION, node.get_uri())],
+            [("OData-Version", "4.0")],
             Json(node.get_body()),
         ).into_response();
     }

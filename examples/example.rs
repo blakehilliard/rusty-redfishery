@@ -256,6 +256,7 @@ mod tests {
     async fn jget(app: &mut NormalizePath<Router>, uri: &str, status_code: StatusCode, allow: &str) -> Value {
         let response = get(app, uri).await;
         assert_eq!(response.status(), status_code);
+        assert_eq!(response.headers().get("OData-Version").unwrap().to_str().unwrap(), "4.0");
         assert_eq!(response.headers().get("allow").unwrap().to_str().unwrap(), allow);
         get_response_json(response).await
     }
@@ -280,6 +281,7 @@ mod tests {
         let response = app.ready().await.unwrap().call(req).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.headers().get("content-type").unwrap().to_str().unwrap(), "application/json");
+        assert_eq!(response.headers().get("OData-Version").unwrap().to_str().unwrap(), "4.0");
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         assert_eq!(body, "");
     }
@@ -342,6 +344,7 @@ mod tests {
         let data = json!({"UserName": "Obiwan", "Password": "n/a"});
         let response = post(&mut app, "/redfish/v1/SessionService/Sessions", data).await;
         assert_eq!(response.status(), StatusCode::CREATED);
+        assert_eq!(response.headers().get("OData-Version").unwrap().to_str().unwrap(), "4.0");
         assert_eq!(response.headers().get("Location").unwrap().to_str().unwrap(), "/redfish/v1/SessionService/Sessions/1");
 
         let body = get_response_json(response).await;
