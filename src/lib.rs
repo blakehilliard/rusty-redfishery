@@ -12,6 +12,53 @@ use axum::{
 use tower_http::normalize_path::{NormalizePath, NormalizePathLayer};
 use tower::layer::Layer;
 use serde_json::{Value, json};
+use serde::Serialize;
+use http::{
+    header::{self, HeaderValue},
+};
+use bytes::{BufMut, BytesMut};
+
+#[derive(Debug, Clone, Copy, Default)]
+#[must_use]
+struct JsonGetResponse<T>(T);
+
+impl<T> From<T> for JsonGetResponse<T> {
+    fn from(inner: T) -> Self {
+        Self(inner)
+    }
+}
+
+impl<T> IntoResponse for JsonGetResponse<T>
+where
+    T: Serialize,
+{
+    fn into_response(self) -> Response {
+        let mut buf = BytesMut::with_capacity(128).writer();
+        match serde_json::to_writer(&mut buf, &self.0) {
+            Ok(()) => (
+                [(
+                    header::CONTENT_TYPE,
+                    HeaderValue::from_static(mime::APPLICATION_JSON.as_ref()),
+                )],
+                [(
+                    header::ALLOW,
+                    HeaderValue::from_static("GET,HEAD"),
+                )],
+                buf.into_inner().freeze(),
+            )
+                .into_response(),
+            Err(err) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                [(
+                    header::CONTENT_TYPE,
+                    HeaderValue::from_static(mime::TEXT_PLAIN_UTF_8.as_ref()),
+                )],
+                err.to_string(),
+            )
+                .into_response(),
+        }
+    }
+}
 
 pub trait RedfishNode {
     fn get_uri(&self) -> &str;
@@ -59,7 +106,7 @@ async fn getter(
     let uri = "/redfish/".to_owned() + &path;
     let tree = state.tree.lock().unwrap();
     if let Some(node) = tree.get(uri.as_str()) {
-        return Json(node.get_body()).into_response();
+        return JsonGetResponse(node.get_body()).into_response();
     }
     StatusCode::NOT_FOUND.into_response()
 }
@@ -76,6 +123,6 @@ async fn poster(
     StatusCode::NOT_FOUND.into_response()
 }
 
-async fn get_redfish() -> Json<Value> {
-    Json(json!({ "v1": "/redfish/v1/" }))
+async fn get_redfish() -> JsonGetResponse<Value> {
+    JsonGetResponse(json!({ "v1": "/redfish/v1/" }))
 }
