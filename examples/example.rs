@@ -266,12 +266,6 @@ mod tests {
         app.ready().await.unwrap().call(req).await.unwrap()
     }
 
-    async fn jpost(app: &mut NormalizePath<Router>, uri: &str, req: serde_json::Value, status_code: StatusCode) -> Value {
-        let response = post(app, uri, req).await;
-        assert_eq!(response.status(), status_code);
-        get_response_json(response).await
-    }
-
     #[tokio::test]
     async fn base_redfish_path() {
         let mut app = app();
@@ -346,8 +340,11 @@ mod tests {
     async fn post_session() {
         let mut app = app();
         let data = json!({"UserName": "Obiwan", "Password": "n/a"});
-        let body = jpost(&mut app, "/redfish/v1/SessionService/Sessions", data, StatusCode::CREATED).await;
-        //FIXME: Test Location header!
+        let response = post(&mut app, "/redfish/v1/SessionService/Sessions", data).await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        assert_eq!(response.headers().get("Location").unwrap().to_str().unwrap(), "/redfish/v1/SessionService/Sessions/1");
+
+        let body = get_response_json(response).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions/1",
             "@odata.type": "#Session.v1_6_0.Session",

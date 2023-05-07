@@ -82,7 +82,14 @@ async fn poster(
     let uri = "/redfish/".to_owned() + &path;
     let mut tree = state.tree.lock().unwrap();
     if let Some(node) = tree.create(uri.as_str(), payload) {
-        return (StatusCode::CREATED, Json(node.get_body())).into_response();
+        return (
+            StatusCode::CREATED,
+            [(
+                header::LOCATION,
+                node.get_uri(),
+            )],
+            Json(node.get_body()),
+        ).into_response();
     }
     match tree.get(uri.as_str()) {
         Some(node) => (
