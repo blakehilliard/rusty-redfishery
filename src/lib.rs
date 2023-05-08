@@ -34,6 +34,10 @@ pub trait RedfishTree {
     // Return Some(RedfishNode) of the new resource, or None on fail.
     // TODO: Properly handle various error cases.
     fn create(&mut self, uri: &str, req: serde_json::Value) -> Option<&dyn RedfishNode>;
+
+    // Delete a resource, given its URI.
+    // Return Ok after it has been deleted, or Error if it cannot be deleted.
+    fn delete(&mut self, uri: &str) -> Result<(), ()>;
 }
 
 pub fn app<T: RedfishTree + Send + Sync + 'static>(tree: T) -> NormalizePath<Router> {
@@ -45,7 +49,7 @@ pub fn app<T: RedfishTree + Send + Sync + 'static>(tree: T) -> NormalizePath<Rou
         .route("/redfish",
                get(get_redfish))
         .route("/redfish/*path",
-               get(getter).post(poster))
+               get(getter).post(poster).delete(deleter))
         .with_state(state);
 
     NormalizePathLayer::trim_trailing_slash()
@@ -71,6 +75,29 @@ async fn getter(
             allow: node_to_allow(node),
         }.into_response(),
         _ => StatusCode::NOT_FOUND.into_response()
+    }
+}
+
+async fn deleter(
+    Path(path): Path<String>,
+    State(state): State<AppState>,
+) -> Response {
+    let uri = "/redfish/".to_owned() + &path;
+    let mut tree = state.tree.lock().unwrap();
+    match tree.delete(uri.as_str()) {
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Err(_) => {
+            match tree.get(uri.as_str()) {
+                Some(node) => (
+                    StatusCode::METHOD_NOT_ALLOWED,
+                    [(
+                        header::ALLOW,
+                        node_to_allow(node),
+                    )],
+                ).into_response(),
+                _ => StatusCode::NOT_FOUND.into_response(),
+            }
+        }
     }
 }
 

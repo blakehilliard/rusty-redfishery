@@ -60,10 +60,11 @@ struct RedfishResource {
     id: String, //TODO: Better name?
     body: Value, //TODO: Enforce map
     deletable: bool,
+    collection: Option<String>,
 }
 
 impl RedfishResource {
-    fn new(uri: &str, resource_type: String, schema_version: String, term_name: String, name: String, deletable: bool, rest: Value) -> Self {
+    fn new(uri: &str, resource_type: String, schema_version: String, term_name: String, name: String, deletable: bool, collection: Option<String>, rest: Value) -> Self {
         let mut body = rest;
         body["@odata.id"] = json!(uri);
         body["@odata.type"] = json!(format!("#{}.{}.{}", resource_type, schema_version, term_name));
@@ -71,7 +72,7 @@ impl RedfishResource {
         body["Id"] = json!(id);
         body["Name"] = json!(name);
         Self {
-            uri: String::from(uri), resource_type, schema_version, term_name, id, body, deletable
+            uri: String::from(uri), resource_type, schema_version, term_name, id, body, deletable, collection,
         }
     }
 }
@@ -160,6 +161,7 @@ impl RedfishTree for MockTree {
                     String::from("Session"),
                     String::from(format!("Session {}", id)),
                     true,
+                    Some(String::from(uri)),
                     json!({
                         "UserName": req.as_object().unwrap().get("UserName").unwrap().as_str(),
                         "Password": serde_json::Value::Null,
@@ -176,6 +178,29 @@ impl RedfishTree for MockTree {
         }
         None
     }
+
+    fn delete(&mut self, uri: &str) -> Result<(), ()> {
+        for index in 0..self.resources.len() {
+            if self.resources[index].get_uri() == uri {
+                if self.resources[index].can_delete() {
+                    if let Some(collection_uri) = &self.resources[index].collection {
+                        for collection in self.collections.iter_mut() {
+                            if collection_uri == collection.get_uri() {
+                                if let Some(member_index) = collection.members.iter().position(|x| x == uri) {
+                                    collection.members.remove(member_index);
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    self.resources.remove(index);
+                    return Ok(());
+                }
+                return Err(());
+            }
+        }
+        Err(())
+    }
 }
 
 fn get_mock_tree() -> MockTree {
@@ -187,6 +212,7 @@ fn get_mock_tree() -> MockTree {
         String::from("ServiceRoot"),
         String::from("Root Service"),
         false,
+        None,
         json!({
             "Links": {
                 "Sessions": {
@@ -202,6 +228,7 @@ fn get_mock_tree() -> MockTree {
         String::from("SessionService"),
         String::from("Session Service"),
         false,
+        None,
         json!({
             "Sessions": {
                 "@odata.id": "/redfish/v1/SessionService/Sessions"
@@ -259,6 +286,11 @@ mod tests {
         assert_eq!(response.headers().get("OData-Version").unwrap().to_str().unwrap(), "4.0");
         assert_eq!(response.headers().get("allow").unwrap().to_str().unwrap(), allow);
         get_response_json(response).await
+    }
+
+    async fn delete(app: &mut NormalizePath<Router>, uri: &str) -> Response {
+        let req = Request::delete(uri).body(Body::empty()).unwrap();
+        app.ready().await.unwrap().call(req).await.unwrap()
     }
 
     async fn post(app: &mut NormalizePath<Router>, uri: &str, req: serde_json::Value) -> Response {
@@ -330,6 +362,14 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn delete_not_allowed() {
+        let mut app = app();
+        let response = delete(&mut app, "/redfish/v1").await;
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(response.headers().get("allow").unwrap().to_str().unwrap(), "GET,HEAD");
+    }
+
+    #[tokio::test]
     async fn post_not_allowed() {
         let mut app = app();
         let data = json!({});
@@ -339,7 +379,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn post_session() {
+    async fn post_and_delete_session() {
         let mut app = app();
         let data = json!({"UserName": "Obiwan", "Password": "n/a"});
         let response = post(&mut app, "/redfish/v1/SessionService/Sessions", data).await;
@@ -377,12 +417,33 @@ mod tests {
             ],
             "Members@odata.count": 1,
         }));
+
+        let response = delete(&mut app, "/redfish/v1/SessionService/Sessions/1").await;
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, "GET,HEAD,POST").await;
+        assert_eq!(body, json!({
+            "@odata.id": "/redfish/v1/SessionService/Sessions",
+            "@odata.type": "#SessionCollection.SessionCollection",
+            "Name": "Session Collection",
+            "Members" : [],
+            "Members@odata.count": 0,
+        }));
     }
 
     #[tokio::test]
     async fn post_not_found() {
         let mut app = app();
         let response = post(&mut app, "/redfish/v1/notfound", json!({})).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        assert_eq!(body, "");
+    }
+
+    #[tokio::test]
+    async fn delete_not_found() {
+        let mut app = app();
+        let response = delete(&mut app, "/redfish/v1/notfound").await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         assert_eq!(body, "");
