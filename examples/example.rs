@@ -60,11 +60,12 @@ struct RedfishResource {
     id: String, //TODO: Better name?
     body: Value, //TODO: Enforce map
     deletable: bool,
+    patchable: bool,
     collection: Option<String>,
 }
 
 impl RedfishResource {
-    fn new(uri: &str, resource_type: String, schema_version: String, term_name: String, name: String, deletable: bool, collection: Option<String>, rest: Value) -> Self {
+    fn new(uri: &str, resource_type: String, schema_version: String, term_name: String, name: String, deletable: bool, patchable: bool, collection: Option<String>, rest: Value) -> Self {
         let mut body = rest;
         body["@odata.id"] = json!(uri);
         body["@odata.type"] = json!(format!("#{}.{}.{}", resource_type, schema_version, term_name));
@@ -72,7 +73,7 @@ impl RedfishResource {
         body["Id"] = json!(id);
         body["Name"] = json!(name);
         Self {
-            uri: String::from(uri), resource_type, schema_version, term_name, id, body, deletable, collection,
+            uri: String::from(uri), resource_type, schema_version, term_name, id, body, deletable, patchable, collection,
         }
     }
 }
@@ -88,7 +89,7 @@ impl RedfishNode for RedfishResource {
 
     fn can_delete(&self) -> bool { self.deletable }
 
-    fn can_patch(&self) -> bool { false }
+    fn can_patch(&self) -> bool { self.patchable }
 
     fn can_post(&self) -> bool { false }
 }
@@ -161,6 +162,7 @@ impl RedfishTree for MockTree {
                     String::from("Session"),
                     String::from(format!("Session {}", id)),
                     true,
+                    false,
                     Some(String::from(uri)),
                     json!({
                         "UserName": req.as_object().unwrap().get("UserName").unwrap().as_str(),
@@ -201,6 +203,18 @@ impl RedfishTree for MockTree {
         }
         Err(())
     }
+
+    fn patch(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, ()> {
+        for resource in self.resources.iter() {
+            if resource.get_uri() == uri {
+                if ! resource.can_patch() {
+                    return Err(());
+                }
+                return Ok(resource);
+            }
+        }
+        Err(())
+    }
 }
 
 fn get_mock_tree() -> MockTree {
@@ -211,6 +225,7 @@ fn get_mock_tree() -> MockTree {
         String::from("v1_15_0"),
         String::from("ServiceRoot"),
         String::from("Root Service"),
+        false,
         false,
         None,
         json!({
@@ -228,8 +243,10 @@ fn get_mock_tree() -> MockTree {
         String::from("SessionService"),
         String::from("Session Service"),
         false,
+        true,
         None,
         json!({
+            "SessionTimeout": 600,
             "Sessions": {
                 "@odata.id": "/redfish/v1/SessionService/Sessions"
             },
@@ -299,6 +316,12 @@ mod tests {
         app.ready().await.unwrap().call(req).await.unwrap()
     }
 
+    async fn patch(app: &mut NormalizePath<Router>, uri: &str, req: serde_json::Value) -> Response {
+        let body = Body::from(serde_json::to_vec(&req).unwrap());
+        let req = Request::patch(uri).header("Content-Type", "application/json").body(body).unwrap();
+        app.ready().await.unwrap().call(req).await.unwrap()
+    }
+
     #[tokio::test]
     async fn base_redfish_path() {
         let mut app = app();
@@ -338,12 +361,13 @@ mod tests {
     #[tokio::test]
     async fn session_service() {
         let mut app = app();
-        let body = jget(&mut app, "/redfish/v1/SessionService/", StatusCode::OK, "GET,HEAD").await;
+        let body = jget(&mut app, "/redfish/v1/SessionService/", StatusCode::OK, "GET,HEAD,PATCH").await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService",
             "@odata.type": "#SessionService.v1_1_9.SessionService",
             "Id": "SessionService",
             "Name": "Session Service",
+            "SessionTimeout": 600,
             "Sessions" : {"@odata.id": "/redfish/v1/SessionService/Sessions"},
         }));
     }
@@ -376,6 +400,44 @@ mod tests {
         let response = post(&mut app, "/redfish/v1", data).await;
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
         assert_eq!(response.headers().get("allow").unwrap().to_str().unwrap(), "GET,HEAD");
+    }
+
+    #[tokio::test]
+    async fn patch_not_allowed() {
+        let mut app = app();
+        let data = json!({});
+        let response = patch(&mut app, "/redfish/v1", data).await;
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(response.headers().get("allow").unwrap().to_str().unwrap(), "GET,HEAD");
+    }
+
+    #[tokio::test]
+    async fn happy_patch() {
+        let mut app = app();
+        let data = json!({"SessionTimeout": 300});
+        let response = patch(&mut app, "/redfish/v1/SessionService", data).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers().get("allow").unwrap().to_str().unwrap(), "GET,HEAD,PATCH");
+
+        let body = get_response_json(response).await;
+        assert_eq!(body, json!({
+            "@odata.id": "/redfish/v1/SessionService",
+            "@odata.type": "#SessionService.v1_1_9.SessionService",
+            "Id": "SessionService",
+            "Name": "Session Service",
+            "SessionTimeout": 300,
+            "Sessions" : {"@odata.id": "/redfish/v1/SessionService/Sessions"},
+        }));
+
+        let body = jget(&mut app, "/redfish/v1/SessionService/", StatusCode::OK, "GET,HEAD,PATCH").await;
+        assert_eq!(body, json!({
+            "@odata.id": "/redfish/v1/SessionService",
+            "@odata.type": "#SessionService.v1_1_9.SessionService",
+            "Id": "SessionService",
+            "Name": "Session Service",
+            "SessionTimeout": 300,
+            "Sessions" : {"@odata.id": "/redfish/v1/SessionService/Sessions"},
+        }));
     }
 
     #[tokio::test]
@@ -463,6 +525,15 @@ mod tests {
         let mut app = app();
         let req = Request::head("/redfish/v1/notfound").body(Body::empty()).unwrap();
         let response = app.ready().await.unwrap().call(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        assert_eq!(body, "");
+    }
+
+    #[tokio::test]
+    async fn patch_not_found() {
+        let mut app = app();
+        let response = patch(&mut app, "/redfish/v1/notfound", json!({})).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         assert_eq!(body, "");

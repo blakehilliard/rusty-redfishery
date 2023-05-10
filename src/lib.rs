@@ -38,6 +38,10 @@ pub trait RedfishTree {
     // Delete a resource, given its URI.
     // Return Ok after it has been deleted, or Error if it cannot be deleted.
     fn delete(&mut self, uri: &str) -> Result<(), ()>;
+
+    // Patch a resource.
+    // Return the patched resource on success, or Error.
+    fn patch(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, ()>;
 }
 
 pub fn app<T: RedfishTree + Send + Sync + 'static>(tree: T) -> NormalizePath<Router> {
@@ -49,7 +53,7 @@ pub fn app<T: RedfishTree + Send + Sync + 'static>(tree: T) -> NormalizePath<Rou
         .route("/redfish",
                get(get_redfish))
         .route("/redfish/*path",
-               get(getter).post(poster).delete(deleter))
+               get(getter).post(poster).delete(deleter).patch(patcher))
         .with_state(state);
 
     NormalizePathLayer::trim_trailing_slash()
@@ -125,6 +129,33 @@ async fn poster(
             )],
         ).into_response(),
         _ => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+async fn patcher(
+    Path(path): Path<String>,
+    State(state): State<AppState>,
+    Json(payload): Json<serde_json::Value>,
+) -> Response {
+    let uri = "/redfish/".to_owned() + &path;
+    let mut tree = state.tree.lock().unwrap();
+    match tree.patch(uri.as_str(), payload) {
+        Ok(node) => JsonGetResponse {
+            data: node.get_body(),
+            allow: node_to_allow(node),
+        }.into_response(),
+        Err(_) => {
+            match tree.get(uri.as_str()) {
+                Some(node) => (
+                    StatusCode::METHOD_NOT_ALLOWED,
+                    [(
+                        header::ALLOW,
+                        node_to_allow(node),
+                    )],
+                ).into_response(),
+                _ => StatusCode::NOT_FOUND.into_response(),
+            }
+        }
     }
 }
 
