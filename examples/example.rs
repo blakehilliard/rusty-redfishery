@@ -246,6 +246,7 @@ fn get_mock_tree() -> MockTree {
         true,
         None,
         json!({
+            "@Redfish.WriteableProperties": ["SessionTimeout"],
             "SessionTimeout": 600,
             "Sessions": {
                 "@odata.id": "/redfish/v1/SessionService/Sessions"
@@ -365,6 +366,7 @@ mod tests {
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService",
             "@odata.type": "#SessionService.v1_1_9.SessionService",
+            "@Redfish.WriteableProperties": ["SessionTimeout"],
             "Id": "SessionService",
             "Name": "Session Service",
             "SessionTimeout": 600,
@@ -423,6 +425,7 @@ mod tests {
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService",
             "@odata.type": "#SessionService.v1_1_9.SessionService",
+            "@Redfish.WriteableProperties": ["SessionTimeout"],
             "Id": "SessionService",
             "Name": "Session Service",
             "SessionTimeout": 300,
@@ -433,6 +436,7 @@ mod tests {
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService",
             "@odata.type": "#SessionService.v1_1_9.SessionService",
+            "@Redfish.WriteableProperties": ["SessionTimeout"],
             "Id": "SessionService",
             "Name": "Session Service",
             "SessionTimeout": 300,
