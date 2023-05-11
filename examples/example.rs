@@ -229,6 +229,9 @@ fn get_mock_tree() -> MockTree {
         false,
         None,
         json!({
+            "AccountService": {
+                "@odata.id": "/redfish/v1/AccountService",
+            },
             "Links": {
                 "Sessions": {
                     "@odata.id": "/redfish/v1/SessionService/Sessions"
@@ -260,6 +263,121 @@ fn get_mock_tree() -> MockTree {
         members: vec![],
         postable: true,
     });
+    tree.add_resource(RedfishResource::new(
+        "/redfish/v1/AccountService",
+        String::from("AccountService"),
+        String::from("v1_12_0"),
+        String::from("AccountService"),
+        String::from("Account Service"),
+        false,
+        false,
+        None,
+        json!({
+            "Accounts": {
+                "@odata.id": "/redfish/v1/AccountService/Accounts"
+            },
+            "Roles": {
+                "@odata.id": "/redfish/v1/AccountService/Roles"
+            }
+        })
+    ));
+    tree.add_collection(RedfishCollection {
+        uri: String::from("/redfish/v1/AccountService/Accounts"),
+        resource_type: String::from("AccountCollection"),
+        name: String::from("Account Collection"),
+        members: vec![String::from("/redfish/v1/AccountService/Accounts/admin")],
+        postable: true,
+    });
+    tree.add_resource(RedfishResource::new(
+        "/redfish/v1/AccountService/Accounts/admin",
+        String::from("ManagerAccount"),
+        String::from("v1_10_0"),
+        String::from("ManagerAccount"),
+        String::from("Admin Account"),
+        false,
+        true,
+        Some(String::from("/redfish/v1/AccountService/Accounts")),
+        json!({
+            "@Redfish.WriteableProperties": ["Password"],
+            "Links": {
+                "Role": {
+                    "@odata.id": "/redfish/v1/AccountService/Roles/Administrator"
+                }
+            },
+            "Password": null,
+            "RoleId": "Administrator",
+            "UserName": "admin",
+        })
+    ));
+    tree.add_collection(RedfishCollection {
+        uri: String::from("/redfish/v1/AccountService/Roles"),
+        resource_type: String::from("RoleCollection"),
+        name: String::from("Role Collection"),
+        members: vec![
+            String::from("/redfish/v1/AccountService/Roles/Administrator"),
+            String::from("/redfish/v1/AccountService/Roles/Operator"),
+            String::from("/redfish/v1/AccountService/Roles/ReadOnly"),
+        ],
+        postable: true,
+    });
+    tree.add_resource(RedfishResource::new(
+        "/redfish/v1/AccountService/Roles/Administrator",
+        String::from("Role"),
+        String::from("v1_3_1"),
+        String::from("Role"),
+        String::from("Administrator Role"),
+        false,
+        false,
+        Some(String::from("/redfish/v1/AccountService/Roles")),
+        json!({
+            "AssignedPrivileges": [
+                "Login",
+                "ConfigureManager",
+                "ConfigureUsers",
+                "ConfigureSelf",
+                "ConfigureComponents",
+            ],
+            "IsPredefined": true,
+            "RoleId": "Administrator",
+        })
+    ));
+    tree.add_resource(RedfishResource::new(
+        "/redfish/v1/AccountService/Roles/Operator",
+        String::from("Role"),
+        String::from("v1_3_1"),
+        String::from("Role"),
+        String::from("Operator Role"),
+        false,
+        false,
+        Some(String::from("/redfish/v1/AccountService/Roles")),
+        json!({
+            "AssignedPrivileges": [
+                "Login",
+                "ConfigureSelf",
+                "ConfigureComponents",
+            ],
+            "IsPredefined": true,
+            "RoleId": "Operator",
+        })
+    ));
+    tree.add_resource(RedfishResource::new(
+        "/redfish/v1/AccountService/Roles/ReadOnly",
+        String::from("Role"),
+        String::from("v1_3_1"),
+        String::from("Role"),
+        String::from("ReadOnly Role"),
+        false,
+        false,
+        Some(String::from("/redfish/v1/AccountService/Roles")),
+        json!({
+            "AssignedPrivileges": [
+                "ConfigureSelf",
+                "Login",
+            ],
+            "IsPredefined": true,
+            "RoleId": "ReadOnly",
+        })
+    ));
     tree
 }
 
@@ -351,6 +469,9 @@ mod tests {
             "@odata.type": "#ServiceRoot.v1_15_0.ServiceRoot",
             "Id": "RootService",
             "Name": "Root Service",
+            "AccountService": {
+                "@odata.id": "/redfish/v1/AccountService",
+            },
             "Links": {
                 "Sessions": {
                     "@odata.id": "/redfish/v1/SessionService/Sessions"
@@ -384,6 +505,64 @@ mod tests {
             "Name": "Session Collection",
             "Members" : [],
             "Members@odata.count": 0,
+        }));
+    }
+
+    #[tokio::test]
+    async fn default_administrator_role() {
+        let mut app = app();
+        let body = jget(&mut app, "/redfish/v1/AccountService/Roles/Administrator", StatusCode::OK, "GET,HEAD").await;
+        assert_eq!(body, json!({
+            "@odata.id": "/redfish/v1/AccountService/Roles/Administrator",
+            "@odata.type": "#Role.v1_3_1.Role",
+            "Id": "Administrator",
+            "Name": "Administrator Role",
+            "AssignedPrivileges": [
+                "Login",
+                "ConfigureManager",
+                "ConfigureUsers",
+                "ConfigureSelf",
+                "ConfigureComponents",
+            ],
+            "IsPredefined": true,
+            "RoleId": "Administrator",
+        }));
+    }
+
+    #[tokio::test]
+    async fn default_operator_role() {
+        let mut app = app();
+        let body = jget(&mut app, "/redfish/v1/AccountService/Roles/Operator", StatusCode::OK, "GET,HEAD").await;
+        assert_eq!(body, json!({
+            "@odata.id": "/redfish/v1/AccountService/Roles/Operator",
+            "@odata.type": "#Role.v1_3_1.Role",
+            "Id": "Operator",
+            "Name": "Operator Role",
+            "AssignedPrivileges": [
+                "Login",
+                "ConfigureSelf",
+                "ConfigureComponents",
+            ],
+            "IsPredefined": true,
+            "RoleId": "Operator",
+        }));
+    }
+
+    #[tokio::test]
+    async fn default_readonly_role() {
+        let mut app = app();
+        let body = jget(&mut app, "/redfish/v1/AccountService/Roles/ReadOnly", StatusCode::OK, "GET,HEAD").await;
+        assert_eq!(body, json!({
+            "@odata.id": "/redfish/v1/AccountService/Roles/ReadOnly",
+            "@odata.type": "#Role.v1_3_1.Role",
+            "Id": "ReadOnly",
+            "Name": "ReadOnly Role",
+            "AssignedPrivileges": [
+                "ConfigureSelf",
+                "Login",
+            ],
+            "IsPredefined": true,
+            "RoleId": "ReadOnly",
         }));
     }
 
