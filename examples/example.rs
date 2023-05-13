@@ -597,6 +597,22 @@ mod tests {
         }));
     }
 
+    #[tokio::test]
+    async fn get_odata_metadata_doc() {
+        let mut app = app();
+        let response = get(&mut app, "/redfish/v1/$metadata").await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers().get("OData-Version").unwrap().to_str().unwrap(), "4.0");
+        assert_eq!(response.headers().get("allow").unwrap().to_str().unwrap(), "GET,HEAD");
+        assert_eq!(response.headers().get("content-type").unwrap().to_str().unwrap(), "application/xml");
+
+        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        let body = std::str::from_utf8(&body).unwrap();
+        assert_eq!(body, r#"<?xml version="1.0" encoding="UTF-8"?>
+<edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" Version="4.0">
+</edmx:Edmx>
+"#);
+    }
 
     #[tokio::test]
     async fn session_service() {
