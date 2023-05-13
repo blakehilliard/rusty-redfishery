@@ -205,11 +205,19 @@ impl RedfishTree for MockTree {
     }
 
     fn patch(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, ()> {
-        for resource in self.resources.iter() {
+        for resource in self.resources.iter_mut() {
             if resource.get_uri() == uri {
                 if ! resource.can_patch() {
                     return Err(());
                 }
+                if uri != "/redfish/v1/SessionService" {
+                    return Err(());
+                }
+                // TODO: Move to per-resource functions
+                // FIXME: Allow patch that doesn't set this! And do correct error handling!
+                let new_timeout = req.as_object().unwrap().get("SessionTimeout").unwrap().as_u64().unwrap();
+                let cur_timeout = resource.body.as_object_mut().unwrap().get_mut("SessionTimeout").unwrap();
+                *cur_timeout = serde_json::Value::from(new_timeout);
                 return Ok(resource);
             }
         }
@@ -295,7 +303,7 @@ fn get_mock_tree() -> MockTree {
         String::from("ManagerAccount"),
         String::from("Admin Account"),
         false,
-        true,
+        false,
         Some(String::from("/redfish/v1/AccountService/Accounts")),
         json!({
             "@Redfish.WriteableProperties": ["Password"],
