@@ -294,6 +294,13 @@ impl RedfishTree for MockTree {
         }
         Err(())
     }
+
+    fn get_odata_metadata_doc(&self) -> String {
+        String::from(r#"<?xml version="1.0" encoding="UTF-8"?>
+<edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" Version="4.0">
+</edmx:Edmx>
+"#)
+    }
 }
 
 fn get_mock_tree() -> MockTree {

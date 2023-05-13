@@ -42,6 +42,9 @@ pub trait RedfishTree {
     // Patch a resource.
     // Return the patched resource on success, or Error.
     fn patch(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, ()>;
+
+    // Return the body of /redfish/v1/$metadata in string format
+    fn get_odata_metadata_doc(&self) -> String;
 }
 
 pub fn app<T: RedfishTree + Send + Sync + 'static>(tree: T) -> NormalizePath<Router> {
@@ -52,6 +55,8 @@ pub fn app<T: RedfishTree + Send + Sync + 'static>(tree: T) -> NormalizePath<Rou
     let app = Router::new()
         .route("/redfish",
                get(get_redfish))
+        .route("/redfish/v1/$metadata",
+               get(get_odata_metadata_doc))
         .route("/redfish/*path",
                get(getter).post(poster).delete(deleter).patch(patcher))
         .with_state(state);
@@ -164,6 +169,18 @@ async fn get_redfish() -> JsonGetResponse<Value> {
         data: json!({ "v1": "/redfish/v1/" }),
         allow: String::from("GET,HEAD"),
     }
+}
+
+async fn get_odata_metadata_doc(
+    State(state): State<AppState>,
+) -> Response {
+    let tree = state.tree.lock().unwrap();
+    (
+        [(header::CONTENT_TYPE, "application/xml")],
+        [(header::ALLOW, "GET,HEAD")],
+        [("OData-Version", "4.0")],
+        tree.get_odata_metadata_doc(),
+    ).into_response()
 }
 
 fn node_to_allow(node: &dyn RedfishNode) -> String {
