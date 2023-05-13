@@ -8,6 +8,8 @@ use tower_http::normalize_path::{NormalizePath};
 use serde_json::{Value, json};
 use redfish_axum::{RedfishNode, RedfishTree};
 
+const ODATA_SERVICE_DOC_URI: &str = "/redfish/v1/odata";
+
 struct RedfishCollection {
     uri: String,
     resource_type: String,
@@ -94,10 +96,71 @@ impl RedfishNode for RedfishResource {
     fn can_post(&self) -> bool { false }
 }
 
+struct ODataServiceValue {
+    kind: String,
+    name: String,
+    url: String,
+}
+
+struct ODataServiceDoc {
+    values: Vec<ODataServiceValue>,
+}
+
+impl ODataServiceValue {
+    fn new_singleton(url: &str) -> Self {
+        Self {
+            kind: String::from("Singleton"),
+            name: String::from(std::path::Path::new(url).file_name().unwrap().to_str().unwrap()),
+            url: String::from(url),
+        }
+    }
+}
+
+impl ODataServiceDoc {
+    fn new() -> Self {
+        let mut values = Vec::new();
+        values.push(ODataServiceValue::new_singleton("/redfish/v1"));
+        Self { values, }
+    }
+
+    fn add_value(&mut self, value: ODataServiceValue) {
+        self.values.push(value);
+    }
+}
+
+impl RedfishNode for ODataServiceDoc {
+    fn get_uri(&self) -> &str {
+        ODATA_SERVICE_DOC_URI
+    }
+
+    fn get_body(&self) -> Value {
+        let mut value_list = Vec::new();
+        for value in self.values.iter() {
+            let mut value_obj = HashMap::new();
+            value_obj.insert(String::from("kind"), value.kind.clone());
+            value_obj.insert(String::from("name"), value.name.clone());
+            value_obj.insert(String::from("url"), value.url.clone());
+            value_list.push(value_obj);
+        }
+        json!({
+            "@odata.id": self.get_uri(),
+            "@odata.context": "/redfish/v1/$metadata",
+            "value": value_list,
+        })
+    }
+
+    fn can_delete(&self) -> bool { false }
+
+    fn can_patch(&self) -> bool { false }
+
+    fn can_post(&self) -> bool { false }
+}
+
 struct MockTree {
     //FIXME: Would be better as a Map
     resources: Vec<RedfishResource>,
     collections: Vec<RedfishCollection>,
+    odata_service_doc: ODataServiceDoc,
 }
 
 impl MockTree {
@@ -105,6 +168,7 @@ impl MockTree {
         Self {
             resources: Vec::new(),
             collections: Vec::new(),
+            odata_service_doc: ODataServiceDoc::new(),
          }
     }
 
@@ -115,10 +179,17 @@ impl MockTree {
     fn add_collection(&mut self, collection: RedfishCollection) {
         self.collections.push(collection);
     }
+
+    fn add_odata_service_value(&mut self, value: ODataServiceValue) {
+        self.odata_service_doc.add_value(value);
+    }
 }
 
 impl RedfishTree for MockTree {
     fn get(&self, uri: &str) -> Option<&dyn RedfishNode> {
+        if uri == ODATA_SERVICE_DOC_URI {
+            return Some(&self.odata_service_doc);
+        }
         for node in &self.resources {
             if uri == node.get_uri() {
                 return Some(node);
@@ -227,6 +298,10 @@ impl RedfishTree for MockTree {
 
 fn get_mock_tree() -> MockTree {
     let mut tree = MockTree::new();
+    //TODO: Make a way for this to not be hardcoded
+    tree.add_odata_service_value(ODataServiceValue::new_singleton("/redfish/v1/AccountService"));
+    tree.add_odata_service_value(ODataServiceValue::new_singleton("/redfish/v1/SessionService"));
+
     tree.add_resource(RedfishResource::new(
         "/redfish/v1",
         String::from("ServiceRoot"),
@@ -487,6 +562,34 @@ mod tests {
             }
         }));
     }
+
+    #[tokio::test]
+    async fn get_odata_service_doc() {
+        let mut app = app();
+        let body = jget(&mut app, ODATA_SERVICE_DOC_URI, StatusCode::OK, "GET,HEAD").await;
+        assert_eq!(body, json!({
+            "@odata.id": ODATA_SERVICE_DOC_URI,
+            "@odata.context": "/redfish/v1/$metadata",
+            "value": [
+                {
+                    "kind": "Singleton",
+                    "name": "v1",
+                    "url": "/redfish/v1",
+                },
+                {
+                    "kind": "Singleton",
+                    "name": "AccountService",
+                    "url": "/redfish/v1/AccountService",
+                },
+                {
+                    "kind": "Singleton",
+                    "name": "SessionService",
+                    "url": "/redfish/v1/SessionService",
+                },
+            ],
+        }));
+    }
+
 
     #[tokio::test]
     async fn session_service() {
