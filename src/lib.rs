@@ -17,6 +17,87 @@ use http::header;
 mod json;
 use json::JsonGetResponse;
 
+#[derive(Clone, PartialEq)]
+pub struct RedfishResourceSchemaVersion {
+    major: u32,
+    minor: u32,
+    build: u32,
+}
+
+impl RedfishResourceSchemaVersion {
+    pub fn new(major: u32, minor: u32, build: u32) -> Self {
+        Self { major, minor, build }
+    }
+
+    pub fn to_str(&self) -> String {
+        format!("v{}_{}_{}", self.major, self.minor, self.build)
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub struct RedfishCollectionSchemaVersion {
+    version: u32,
+}
+
+impl RedfishCollectionSchemaVersion {
+    pub fn new(version: u32) -> Self {
+        Self { version }
+    }
+
+    pub fn to_str(&self) -> String {
+        format!("v{}", self.version)
+    }
+}
+
+pub struct RedfishResourceType {
+    pub name: String,
+    pub version: RedfishResourceSchemaVersion,
+    xml_schema_uri: String,
+}
+
+impl RedfishResourceType {
+    // Create for a DMTF schema of a redfish resource
+    pub fn new_dmtf(name: String, version: RedfishResourceSchemaVersion) -> Self {
+        Self {
+            xml_schema_uri: format!("http://redfish.dmtf.org/schemas/v1/{}_v{}.xml", name, version.major),
+            name,
+            version,
+        }
+    }
+
+    // TODO: This should be more commonized
+    fn get_versioned_name(&self) -> String {
+        format!("{}.{}", self.name, self.version.to_str())
+    }
+
+    fn to_xml(&self) -> String {
+        format!("  <edmx:Reference Uri=\"{}\">\n    <edmx:Include Namespace=\"{}\" />\n    <edmx:Include Namespace=\"{}\" />\n  </edmx:Reference>\n",
+                self.xml_schema_uri, self.name, self.get_versioned_name())
+    }
+}
+
+pub struct RedfishCollectionType {
+    pub name: String,
+    pub version: RedfishCollectionSchemaVersion,
+    xml_schema_uri: String,
+}
+
+impl RedfishCollectionType {
+    // Create for a DMTF schema of a redfish collection
+    pub fn new_dmtf(name: String, version: RedfishCollectionSchemaVersion) -> Self {
+        Self {
+            xml_schema_uri: format!("http://redfish.dmtf.org/schemas/v1/{}_{}.xml", name, version.to_str()),
+            name,
+            version,
+        }
+    }
+
+    fn to_xml(&self) -> String {
+        format!("  <edmx:Reference Uri=\"{}\">\n    <edmx:Include Namespace=\"{}\" />\n  </edmx:Reference>\n",
+                self.xml_schema_uri, self.name)
+    }
+}
+
 pub trait RedfishNode {
     fn get_uri(&self) -> &str;
     fn get_body(&self) -> serde_json::Value;
@@ -43,8 +124,9 @@ pub trait RedfishTree {
     // Return the patched resource on success, or Error.
     fn patch(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, ()>;
 
-    // Return the body of /redfish/v1/$metadata in string format
-    fn get_odata_metadata_doc(&self) -> String;
+    fn get_collection_types(&self) -> &Vec<RedfishCollectionType>;
+
+    fn get_resource_types(&self) -> &Vec<RedfishResourceType>;
 }
 
 pub fn app<T: RedfishTree + Send + Sync + 'static>(tree: T) -> NormalizePath<Router> {
@@ -67,6 +149,7 @@ pub fn app<T: RedfishTree + Send + Sync + 'static>(tree: T) -> NormalizePath<Rou
 
 //FIXME: Figure out right kind of mutex: https://docs.rs/tokio/1.25.0/tokio/sync/struct.Mutex.html#which-kind-of-mutex-should-you-use
 //TODO: Is it necessary to wrap the tree in this struct at all?
+// TODO: Do I still need Send + Sync and Mutex?
 #[derive(Clone)]
 struct AppState {
     tree: Arc<Mutex<dyn RedfishTree + Send + Sync>>,
@@ -175,11 +258,31 @@ async fn get_odata_metadata_doc(
     State(state): State<AppState>,
 ) -> Response {
     let tree = state.tree.lock().unwrap();
+
+    let mut body = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<edmx:Edmx xmlns:edmx=\"http://docs.oasis-open.org/odata/ns/edmx\" Version=\"4.0\">\n");
+    let mut service_root_type: Option<&RedfishResourceType> = None;
+    for collection_type in tree.get_collection_types() {
+        body.push_str(collection_type.to_xml().as_str());
+    }
+    for resource_type in tree.get_resource_types() {
+        body.push_str(resource_type.to_xml().as_str());
+        if resource_type.name == "ServiceRoot" {
+            service_root_type = Some(resource_type);
+        }
+    }
+    if service_root_type.is_some() {
+        body.push_str("  <edmx:DataServices>\n");
+        body.push_str("    <Schema xmlns=\"http://docs.oasis-open.org/odata/ns/edm\" Namespace=\"Service\">\n");
+        body.push_str(format!("      <EntityContainer Name=\"Service\" Extends=\"{}.ServiceContainer\" />\n", service_root_type.unwrap().get_versioned_name()).as_str());
+        body.push_str("    </Schema>\n  </edmx:DataServices>\n");
+    }
+    body.push_str("</edmx:Edmx>\n");
+
     (
         [(header::CONTENT_TYPE, "application/xml")],
         [(header::ALLOW, "GET,HEAD")],
         [("OData-Version", "4.0")],
-        tree.get_odata_metadata_doc(),
+        body,
     ).into_response()
 }
 

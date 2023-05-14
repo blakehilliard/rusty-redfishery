@@ -6,13 +6,21 @@ use axum::{
 };
 use tower_http::normalize_path::{NormalizePath};
 use serde_json::{Value, json};
-use redfish_axum::{RedfishNode, RedfishTree};
+use redfish_axum::{
+    RedfishNode,
+    RedfishTree,
+    RedfishCollectionType,
+    RedfishResourceType,
+    RedfishCollectionSchemaVersion,
+    RedfishResourceSchemaVersion,
+};
 
 const ODATA_SERVICE_DOC_URI: &str = "/redfish/v1/odata";
 
 struct RedfishCollection {
     uri: String,
-    resource_type: String,
+    resource_type: String, //FIXME: name conflicts with RedfishResourceType
+    schema_version: RedfishCollectionSchemaVersion,
     name: String,
     members: Vec<String>,
     postable: bool,
@@ -56,8 +64,8 @@ fn get_uri_id(uri: &str) -> String {
 #[allow(dead_code)]
 struct RedfishResource {
     uri: String, //TODO: Enforce things here? Does DMTF recommend trailing slash or no?
-    resource_type: String,
-    schema_version: String, //TODO: Enforce conformity
+    resource_type: String, // FIXME: Name conflicts with RedfishResourceType ?
+    schema_version: RedfishResourceSchemaVersion,
     term_name: String, //TODO: Constructor where this is optional and derived from resource_type
     id: String, //TODO: Better name?
     body: Value, //TODO: Enforce map
@@ -67,10 +75,10 @@ struct RedfishResource {
 }
 
 impl RedfishResource {
-    fn new(uri: &str, resource_type: String, schema_version: String, term_name: String, name: String, deletable: bool, patchable: bool, collection: Option<String>, rest: Value) -> Self {
+    fn new(uri: &str, resource_type: String, schema_version: RedfishResourceSchemaVersion, term_name: String, name: String, deletable: bool, patchable: bool, collection: Option<String>, rest: Value) -> Self {
         let mut body = rest;
         body["@odata.id"] = json!(uri);
-        body["@odata.type"] = json!(format!("#{}.{}.{}", resource_type, schema_version, term_name));
+        body["@odata.type"] = json!(format!("#{}.{}.{}", resource_type, schema_version.to_str(), term_name));
         let id = get_uri_id(uri);
         body["Id"] = json!(id);
         body["Name"] = json!(name);
@@ -161,6 +169,8 @@ struct MockTree {
     resources: Vec<RedfishResource>,
     collections: Vec<RedfishCollection>,
     odata_service_doc: ODataServiceDoc,
+    collection_types: Vec<RedfishCollectionType>,
+    resource_types: Vec<RedfishResourceType>,
 }
 
 impl MockTree {
@@ -169,15 +179,33 @@ impl MockTree {
             resources: Vec::new(),
             collections: Vec::new(),
             odata_service_doc: ODataServiceDoc::new(),
+            collection_types: Vec::new(),
+            resource_types: Vec::new(),
          }
     }
 
     fn add_resource(&mut self, resource: RedfishResource) {
+        let resource_type_name = resource.resource_type.clone();
+        let schema_version = resource.schema_version.clone();
         self.resources.push(resource);
+        for resource_type in self.resource_types.iter() {
+            if resource_type.name == resource_type_name && resource_type.version == schema_version {
+                return;
+            }
+        }
+        self.resource_types.push(RedfishResourceType::new_dmtf(resource_type_name, schema_version));
     }
 
     fn add_collection(&mut self, collection: RedfishCollection) {
+        let collection_type_name = collection.resource_type.clone();
+        let schema_version = collection.schema_version.clone();
         self.collections.push(collection);
+        for collection_type in self.collection_types.iter() {
+            if collection_type.name == collection_type_name && collection_type.version == schema_version {
+                return;
+            }
+        }
+        self.collection_types.push(RedfishCollectionType::new_dmtf(collection_type_name, schema_version));
     }
 
     fn add_odata_service_value(&mut self, value: ODataServiceValue) {
@@ -229,7 +257,7 @@ impl RedfishTree for MockTree {
                 let new_member = RedfishResource::new(
                     member_uri.as_str(),
                     String::from("Session"),
-                    String::from("v1_6_0"),
+                    RedfishResourceSchemaVersion::new(1, 6, 0),
                     String::from("Session"),
                     String::from(format!("Session {}", id)),
                     true,
@@ -295,11 +323,12 @@ impl RedfishTree for MockTree {
         Err(())
     }
 
-    fn get_odata_metadata_doc(&self) -> String {
-        String::from(r#"<?xml version="1.0" encoding="UTF-8"?>
-<edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" Version="4.0">
-</edmx:Edmx>
-"#)
+    fn get_collection_types(&self) -> &Vec<RedfishCollectionType> {
+        &self.collection_types
+    }
+
+    fn get_resource_types(&self) -> &Vec<RedfishResourceType> {
+        &self.resource_types
     }
 }
 
@@ -312,7 +341,7 @@ fn get_mock_tree() -> MockTree {
     tree.add_resource(RedfishResource::new(
         "/redfish/v1",
         String::from("ServiceRoot"),
-        String::from("v1_15_0"),
+        RedfishResourceSchemaVersion::new(1, 15, 0),
         String::from("ServiceRoot"),
         String::from("Root Service"),
         false,
@@ -332,7 +361,7 @@ fn get_mock_tree() -> MockTree {
     tree.add_resource(RedfishResource::new(
         "/redfish/v1/SessionService",
         String::from("SessionService"),
-        String::from("v1_1_9"),
+        RedfishResourceSchemaVersion::new(1, 1, 9),
         String::from("SessionService"),
         String::from("Session Service"),
         false,
@@ -349,6 +378,7 @@ fn get_mock_tree() -> MockTree {
     tree.add_collection(RedfishCollection {
         uri: String::from("/redfish/v1/SessionService/Sessions"),
         resource_type: String::from("SessionCollection"),
+        schema_version: RedfishCollectionSchemaVersion::new(1),
         name: String::from("Session Collection"),
         members: vec![],
         postable: true,
@@ -356,7 +386,7 @@ fn get_mock_tree() -> MockTree {
     tree.add_resource(RedfishResource::new(
         "/redfish/v1/AccountService",
         String::from("AccountService"),
-        String::from("v1_12_0"),
+        RedfishResourceSchemaVersion::new(1, 12, 0),
         String::from("AccountService"),
         String::from("Account Service"),
         false,
@@ -373,7 +403,8 @@ fn get_mock_tree() -> MockTree {
     ));
     tree.add_collection(RedfishCollection {
         uri: String::from("/redfish/v1/AccountService/Accounts"),
-        resource_type: String::from("AccountCollection"),
+        resource_type: String::from("ManagerAccountCollection"),
+        schema_version: RedfishCollectionSchemaVersion::new(1),
         name: String::from("Account Collection"),
         members: vec![String::from("/redfish/v1/AccountService/Accounts/admin")],
         postable: true,
@@ -381,7 +412,7 @@ fn get_mock_tree() -> MockTree {
     tree.add_resource(RedfishResource::new(
         "/redfish/v1/AccountService/Accounts/admin",
         String::from("ManagerAccount"),
-        String::from("v1_10_0"),
+        RedfishResourceSchemaVersion::new(1, 10, 0),
         String::from("ManagerAccount"),
         String::from("Admin Account"),
         false,
@@ -402,6 +433,7 @@ fn get_mock_tree() -> MockTree {
     tree.add_collection(RedfishCollection {
         uri: String::from("/redfish/v1/AccountService/Roles"),
         resource_type: String::from("RoleCollection"),
+        schema_version: RedfishCollectionSchemaVersion::new(1),
         name: String::from("Role Collection"),
         members: vec![
             String::from("/redfish/v1/AccountService/Roles/Administrator"),
@@ -413,7 +445,7 @@ fn get_mock_tree() -> MockTree {
     tree.add_resource(RedfishResource::new(
         "/redfish/v1/AccountService/Roles/Administrator",
         String::from("Role"),
-        String::from("v1_3_1"),
+        RedfishResourceSchemaVersion::new(1, 3, 1),
         String::from("Role"),
         String::from("Administrator Role"),
         false,
@@ -434,7 +466,7 @@ fn get_mock_tree() -> MockTree {
     tree.add_resource(RedfishResource::new(
         "/redfish/v1/AccountService/Roles/Operator",
         String::from("Role"),
-        String::from("v1_3_1"),
+        RedfishResourceSchemaVersion::new(1, 3, 1),
         String::from("Role"),
         String::from("Operator Role"),
         false,
@@ -453,7 +485,7 @@ fn get_mock_tree() -> MockTree {
     tree.add_resource(RedfishResource::new(
         "/redfish/v1/AccountService/Roles/ReadOnly",
         String::from("Role"),
-        String::from("v1_3_1"),
+        RedfishResourceSchemaVersion::new(1, 3, 1),
         String::from("Role"),
         String::from("ReadOnly Role"),
         false,
@@ -608,8 +640,43 @@ mod tests {
 
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         let body = std::str::from_utf8(&body).unwrap();
+        println!("{}", body);
         assert_eq!(body, r#"<?xml version="1.0" encoding="UTF-8"?>
 <edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" Version="4.0">
+  <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/SessionCollection_v1.xml">
+    <edmx:Include Namespace="SessionCollection" />
+  </edmx:Reference>
+  <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/ManagerAccountCollection_v1.xml">
+    <edmx:Include Namespace="ManagerAccountCollection" />
+  </edmx:Reference>
+  <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/RoleCollection_v1.xml">
+    <edmx:Include Namespace="RoleCollection" />
+  </edmx:Reference>
+  <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/ServiceRoot_v1.xml">
+    <edmx:Include Namespace="ServiceRoot" />
+    <edmx:Include Namespace="ServiceRoot.v1_15_0" />
+  </edmx:Reference>
+  <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/SessionService_v1.xml">
+    <edmx:Include Namespace="SessionService" />
+    <edmx:Include Namespace="SessionService.v1_1_9" />
+  </edmx:Reference>
+  <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/AccountService_v1.xml">
+    <edmx:Include Namespace="AccountService" />
+    <edmx:Include Namespace="AccountService.v1_12_0" />
+  </edmx:Reference>
+  <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/ManagerAccount_v1.xml">
+    <edmx:Include Namespace="ManagerAccount" />
+    <edmx:Include Namespace="ManagerAccount.v1_10_0" />
+  </edmx:Reference>
+  <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/Role_v1.xml">
+    <edmx:Include Namespace="Role" />
+    <edmx:Include Namespace="Role.v1_3_1" />
+  </edmx:Reference>
+  <edmx:DataServices>
+    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Service">
+      <EntityContainer Name="Service" Extends="ServiceRoot.v1_15_0.ServiceContainer" />
+    </Schema>
+  </edmx:DataServices>
 </edmx:Edmx>
 "#);
     }
