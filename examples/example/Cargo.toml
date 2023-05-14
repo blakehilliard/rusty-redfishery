@@ -1,0 +1,17 @@
+[package]
+name = "example-rusty-redfishery"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+axum = "0.6.10"
+bytes = "1.4.0"
+http = "0.2.9"
+mime = "0.3.17"
+serde = "1.0.162"
+serde_json = "1.0.95"
+tower = "0.4.13"
+tower-http = { version = "0.4.0", features = ["normalize-path"] }
+tokio = { version = "1.26.0", features = ["macros", "rt-multi-thread"] }
+hyper = { version = "0.14.25", features = ["full"] }
