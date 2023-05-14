@@ -1,6 +1,3 @@
-use std::sync::{Arc, Mutex};
-use serde_json::{Value, json};
-
 #[derive(Clone, PartialEq)]
 pub struct RedfishResourceSchemaVersion {
     major: u32,
@@ -36,7 +33,7 @@ impl RedfishCollectionSchemaVersion {
 pub struct RedfishResourceType {
     pub name: String,
     pub version: RedfishResourceSchemaVersion,
-    xml_schema_uri: String,
+    pub xml_schema_uri: String,
 }
 
 impl RedfishResourceType {
@@ -54,7 +51,7 @@ impl RedfishResourceType {
         format!("{}.{}", self.name, self.version.to_str())
     }
 
-    fn to_xml(&self) -> String {
+    pub fn to_xml(&self) -> String {
         format!("  <edmx:Reference Uri=\"{}\">\n    <edmx:Include Namespace=\"{}\" />\n    <edmx:Include Namespace=\"{}\" />\n  </edmx:Reference>\n",
                 self.xml_schema_uri, self.name, self.get_versioned_name())
     }
@@ -63,7 +60,7 @@ impl RedfishResourceType {
 pub struct RedfishCollectionType {
     pub name: String,
     pub version: RedfishCollectionSchemaVersion,
-    xml_schema_uri: String,
+    pub xml_schema_uri: String,
 }
 
 impl RedfishCollectionType {
@@ -76,7 +73,7 @@ impl RedfishCollectionType {
         }
     }
 
-    fn to_xml(&self) -> String {
+    pub fn to_xml(&self) -> String {
         format!("  <edmx:Reference Uri=\"{}\">\n    <edmx:Include Namespace=\"{}\" />\n  </edmx:Reference>\n",
                 self.xml_schema_uri, self.name)
     }
