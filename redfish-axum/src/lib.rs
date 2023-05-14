@@ -72,7 +72,6 @@ pub fn app<T: RedfishTree + Send + Sync + 'static>(tree: T) -> NormalizePath<Rou
 
 //FIXME: Figure out right kind of mutex: https://docs.rs/tokio/1.25.0/tokio/sync/struct.Mutex.html#which-kind-of-mutex-should-you-use
 //TODO: Is it necessary to wrap the tree in this struct at all?
-// TODO: Do I still need Send and Mutex?
 #[derive(Clone)]
 struct AppState {
     tree: Arc<Mutex<dyn RedfishTree + Send>>,
