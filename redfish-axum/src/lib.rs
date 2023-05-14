@@ -13,6 +13,10 @@ use tower_http::normalize_path::{NormalizePath, NormalizePathLayer};
 use tower::layer::Layer;
 use serde_json::{Value, json};
 use http::header;
+use redfish_data::{
+    RedfishCollectionType,
+    RedfishResourceType,
+};
 
 mod json;
 use json::JsonGetResponse;

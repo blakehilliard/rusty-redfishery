@@ -47,7 +47,7 @@ impl RedfishResourceType {
     }
 
     // TODO: This should be more commonized
-    fn get_versioned_name(&self) -> String {
+    pub fn get_versioned_name(&self) -> String {
         format!("{}.{}", self.name, self.version.to_str())
     }
 
