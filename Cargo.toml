@@ -1,3 +1,4 @@
 [workspace]
 members = ["redfish-axum", "redfish-data", "example"]
-default-members = ["redfish-axum", "redfish-data"]
+# TODO: Add this later, for now it's annoying to remember special options to run example
+#default-members = ["redfish-axum", "redfish-data"]

@@ -9,6 +9,8 @@ use serde_json::{Value, json};
 use redfish_axum::{
     RedfishNode,
     RedfishTree,
+};
+use redfish_data::{
     RedfishCollectionType,
     RedfishResourceType,
     RedfishCollectionSchemaVersion,
