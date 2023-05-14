@@ -64,7 +64,6 @@ pub struct RedfishCollectionType {
 }
 
 impl RedfishCollectionType {
-    // Create for a DMTF schema of a redfish collection
     pub fn new_dmtf(name: String, version: RedfishCollectionSchemaVersion) -> Self {
         Self {
             xml_schema_uri: format!("http://redfish.dmtf.org/schemas/v1/{}_{}.xml", name, version.to_str()),
@@ -73,8 +72,50 @@ impl RedfishCollectionType {
         }
     }
 
+    // All collection versons are (currently?) v1 so making this to be the less tedious option
+    pub fn new_dmtf_v1(name: String) -> Self {
+        RedfishCollectionType::new_dmtf(name, RedfishCollectionSchemaVersion::new(1))
+    }
+
     pub fn to_xml(&self) -> String {
         format!("  <edmx:Reference Uri=\"{}\">\n    <edmx:Include Namespace=\"{}\" />\n  </edmx:Reference>\n",
                 self.xml_schema_uri, self.name)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn collection_schema_version() {
+        let version = RedfishCollectionSchemaVersion::new(1);
+        assert_eq!(version.to_str(), "v1");
+    }
+
+    #[test]
+    fn resource_schema_version() {
+        let version = RedfishResourceSchemaVersion::new(1, 2, 3);
+        assert_eq!(version.to_str(), "v1_2_3");
+    }
+    
+    #[test]
+    fn dmtf_collection_type() {
+        let collection_type = RedfishCollectionType::new_dmtf_v1(String::from("SessionCollection"));
+        let mut exp_xml = String::from("  <edmx:Reference Uri=\"http://redfish.dmtf.org/schemas/v1/SessionCollection_v1.xml\">\n");
+        exp_xml.push_str("    <edmx:Include Namespace=\"SessionCollection\" />\n");
+        exp_xml.push_str("  </edmx:Reference>\n");
+        assert_eq!(collection_type.to_xml(), exp_xml);
+    }
+
+    #[test]
+    fn dmtf_resource_type() {
+        let version = RedfishResourceSchemaVersion::new(1, 3, 0);
+        let resource_type = RedfishResourceType::new_dmtf(String::from("Role"), version);
+        let mut exp_xml = String::from("  <edmx:Reference Uri=\"http://redfish.dmtf.org/schemas/v1/Role_v1.xml\">\n");
+        exp_xml.push_str("    <edmx:Include Namespace=\"Role\" />\n");
+        exp_xml.push_str("    <edmx:Include Namespace=\"Role.v1_3_0\" />\n");
+        exp_xml.push_str("  </edmx:Reference>\n");
+        assert_eq!(resource_type.to_xml(), exp_xml);
     }
 }
