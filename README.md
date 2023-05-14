@@ -1,2 +1,2 @@
-# redfish-axum
-Learning rust by making a simple redfish frontend framework
+# rusty-redfishery
+Learning rust by making a simple redfish service framework
