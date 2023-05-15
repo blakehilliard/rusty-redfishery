@@ -16,7 +16,7 @@ use http::header;
 use redfish_data::{
     RedfishCollectionType,
     RedfishResourceType,
-    get_odata_metadata_document,
+    get_odata_metadata_document, get_odata_service_document,
 };
 
 mod json;
@@ -63,6 +63,7 @@ pub fn app<T: RedfishTree + Send + Sync + 'static>(tree: T) -> NormalizePath<Rou
                get(get_redfish))
         .route("/redfish/v1/$metadata",
                get(get_odata_metadata_doc))
+        .route("/redfish/v1/odata", get(get_odata_service_doc))
         .route("/redfish/*path",
                get(getter).post(poster).delete(deleter).patch(patcher))
         .with_state(state);
@@ -188,6 +189,17 @@ async fn get_odata_metadata_doc(
         [("OData-Version", "4.0")],
         body,
     ).into_response()
+}
+
+async fn get_odata_service_doc(
+    State(state): State<AppState>,
+) -> Response {
+    let tree = state.tree.lock().unwrap();
+    let service_root = tree.get("/redfish/v1");
+    JsonGetResponse {
+        data: get_odata_service_document(service_root.unwrap().get_body().as_object().unwrap()),
+        allow: String::from("GET,HEAD"),
+    }.into_response()
 }
 
 fn node_to_allow(node: &dyn RedfishNode) -> String {

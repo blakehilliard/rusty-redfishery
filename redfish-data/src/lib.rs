@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use serde_json::{Value, json, Map};
+
 #[derive(Clone, PartialEq)]
 pub struct RedfishResourceSchemaVersion {
     major: u32,
@@ -83,6 +86,52 @@ impl RedfishCollectionType {
     }
 }
 
+// TODO: Can I make this serializable by serde_json without to_hash_map()?
+struct ODataServiceValue {
+    kind: String,
+    name: String,
+    url: String,
+}
+
+impl ODataServiceValue {
+    pub fn new(url: &str) -> Self {
+        Self {
+            kind: String::from("Singleton"),
+            name: String::from(std::path::Path::new(url).file_name().unwrap().to_str().unwrap()),
+            url: String::from(url),
+        }
+    }
+
+    pub fn to_hash_map(&self) -> HashMap<String, String> {
+        let mut map = HashMap::new();
+        map.insert(String::from("kind"), self.kind.clone());
+        map.insert(String::from("name"), self.name.clone());
+        map.insert(String::from("url"), self.url.clone());
+        map
+    }
+}
+
+pub fn get_odata_service_document(service_root: &Map<String, Value>) -> Value {
+    let mut values = Vec::new();
+    values.push(ODataServiceValue::new("/redfish/v1").to_hash_map());
+
+    for val in service_root.values() {
+        let val = val.as_object();
+        if val.is_some() {
+            let val = val.unwrap();
+            if val.contains_key("@odata.id") {
+                values.push(ODataServiceValue::new(val["@odata.id"].as_str().unwrap()).to_hash_map());
+            }
+        }
+    }
+
+    json!({
+        "@odata.id": "/redfish/v1/odata",
+        "@odata.context": "/redfish/v1/$metadata",
+        "value": values,
+    })
+}
+
 pub fn get_odata_metadata_document(collection_types: &[RedfishCollectionType], resource_types: &[RedfishResourceType]) -> String {
     let mut body = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<edmx:Edmx xmlns:edmx=\"http://docs.oasis-open.org/odata/ns/edmx\" Version=\"4.0\">\n");
     let mut service_root_type: Option<&RedfishResourceType> = None;
@@ -142,7 +191,40 @@ mod tests {
     }
 
     #[test]
-    fn odata_metaata_document() {
+    fn odata_service_document() {
+        let service_root = json!({
+            "AccountService": {
+                "@odata.id": "/redfish/v1/AccountService",
+            },
+            "Links": {
+                "Sessions": {
+                    "@odata.id": "/redfish/v1/SessionService/Sessions"
+                },
+            },
+            "RedfishVersion": "1.16.1",
+            "ProtocolFeaturesSupported": {},
+        });
+        let doc = get_odata_service_document(service_root.as_object().unwrap());
+        assert_eq!(doc, json!({
+            "@odata.id": "/redfish/v1/odata",
+            "@odata.context": "/redfish/v1/$metadata",
+            "value": [
+                {
+                    "kind": "Singleton",
+                    "name": "v1",
+                    "url": "/redfish/v1",
+                },
+                {
+                    "kind": "Singleton",
+                    "name": "AccountService",
+                    "url": "/redfish/v1/AccountService",
+                },
+            ],
+        }));
+    }
+
+    #[test]
+    fn odata_metadata_document() {
         let mut collection_types = Vec::new();
         collection_types.push(RedfishCollectionType::new_dmtf_v1(String::from("SessionCollection")));
 
