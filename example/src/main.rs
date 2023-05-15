@@ -310,9 +310,25 @@ fn get_mock_tree() -> MockTree {
         resource_type: String::from("SessionCollection"),
         schema_version: RedfishCollectionSchemaVersion::new(1),
         name: String::from("Session Collection"),
-        members: vec![],
+        members: vec![
+            String::from("/redfish/v1/SessionService/Sessions/1"),
+        ],
         postable: true,
     });
+    tree.add_resource(RedfishResource::new(
+        "/redfish/v1/SessionService/Sessions/1",
+        String::from("Session"),
+        RedfishResourceSchemaVersion::new(1, 6, 0),
+        String::from("Session"),
+        String::from("Session 1"),
+        true,
+        false,
+        Some(String::from("/redfish/v1/SessionService/Sessions")),
+        json!({
+            "UserName": "admin",
+            "Password": serde_json::Value::Null,
+        }),
+    ));
     tree.add_resource(RedfishResource::new(
         "/redfish/v1/AccountService",
         String::from("AccountService"),
@@ -592,6 +608,10 @@ mod tests {
     <edmx:Include Namespace="SessionService" />
     <edmx:Include Namespace="SessionService.v1_1_9" />
   </edmx:Reference>
+  <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/Session_v1.xml">
+    <edmx:Include Namespace="Session" />
+    <edmx:Include Namespace="Session.v1_6_0" />
+  </edmx:Reference>
   <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/AccountService_v1.xml">
     <edmx:Include Namespace="AccountService" />
     <edmx:Include Namespace="AccountService.v1_12_0" />
@@ -629,15 +649,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn empty_session_collection() {
+    async fn get_session_collection() {
         let mut app = app();
         let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, "GET,HEAD,POST").await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions",
             "@odata.type": "#SessionCollection.SessionCollection",
             "Name": "Session Collection",
-            "Members" : [],
-            "Members@odata.count": 0,
+            "Members" : [
+                {"@odata.id": "/redfish/v1/SessionService/Sessions/1"},
+            ],
+            "Members@odata.count": 1,
         }));
     }
 
@@ -763,14 +785,14 @@ mod tests {
         let response = post(&mut app, "/redfish/v1/SessionService/Sessions", data).await;
         assert_eq!(response.status(), StatusCode::CREATED);
         assert_eq!(response.headers().get("OData-Version").unwrap().to_str().unwrap(), "4.0");
-        assert_eq!(response.headers().get("Location").unwrap().to_str().unwrap(), "/redfish/v1/SessionService/Sessions/1");
+        assert_eq!(response.headers().get("Location").unwrap().to_str().unwrap(), "/redfish/v1/SessionService/Sessions/2");
 
         let body = get_response_json(response).await;
         assert_eq!(body, json!({
-            "@odata.id": "/redfish/v1/SessionService/Sessions/1",
+            "@odata.id": "/redfish/v1/SessionService/Sessions/2",
             "@odata.type": "#Session.v1_6_0.Session",
-            "Id": "1",
-            "Name": "Session 1",
+            "Id": "2",
+            "Name": "Session 2",
             "UserName": "Obiwan",
             "Password": serde_json::Value::Null,
         }));
@@ -781,6 +803,16 @@ mod tests {
             "@odata.type": "#Session.v1_6_0.Session",
             "Id": "1",
             "Name": "Session 1",
+            "UserName": "admin",
+            "Password": serde_json::Value::Null,
+        }));
+
+        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/2", StatusCode::OK, "GET,HEAD,DELETE").await;
+        assert_eq!(body, json!({
+            "@odata.id": "/redfish/v1/SessionService/Sessions/2",
+            "@odata.type": "#Session.v1_6_0.Session",
+            "Id": "2",
+            "Name": "Session 2",
             "UserName": "Obiwan",
             "Password": serde_json::Value::Null,
         }));
@@ -791,9 +823,10 @@ mod tests {
             "@odata.type": "#SessionCollection.SessionCollection",
             "Name": "Session Collection",
             "Members" : [
-                {"@odata.id": "/redfish/v1/SessionService/Sessions/1"}
+                {"@odata.id": "/redfish/v1/SessionService/Sessions/1"},
+                {"@odata.id": "/redfish/v1/SessionService/Sessions/2"},
             ],
-            "Members@odata.count": 1,
+            "Members@odata.count": 2,
         }));
 
         let response = delete(&mut app, "/redfish/v1/SessionService/Sessions/1").await;
@@ -804,8 +837,23 @@ mod tests {
             "@odata.id": "/redfish/v1/SessionService/Sessions",
             "@odata.type": "#SessionCollection.SessionCollection",
             "Name": "Session Collection",
-            "Members" : [],
-            "Members@odata.count": 0,
+            "Members" : [
+                {"@odata.id": "/redfish/v1/SessionService/Sessions/2"},
+            ],
+            "Members@odata.count": 1,
+        }));
+
+        let response = get(&mut app, "/redfish/v1/SessionService/Sessions/1").await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/2", StatusCode::OK, "GET,HEAD,DELETE").await;
+        assert_eq!(body, json!({
+            "@odata.id": "/redfish/v1/SessionService/Sessions/2",
+            "@odata.type": "#Session.v1_6_0.Session",
+            "Id": "2",
+            "Name": "Session 2",
+            "UserName": "Obiwan",
+            "Password": serde_json::Value::Null,
         }));
     }
 
