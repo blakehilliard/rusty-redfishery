@@ -325,11 +325,11 @@ impl RedfishTree for MockTree {
         Err(())
     }
 
-    fn get_collection_types(&self) -> &Vec<RedfishCollectionType> {
+    fn get_collection_types(&self) -> &[RedfishCollectionType] {
         &self.collection_types
     }
 
-    fn get_resource_types(&self) -> &Vec<RedfishResourceType> {
+    fn get_resource_types(&self) -> &[RedfishResourceType] {
         &self.resource_types
     }
 }

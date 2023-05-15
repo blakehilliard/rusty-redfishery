@@ -48,9 +48,9 @@ pub trait RedfishTree {
     // Return the patched resource on success, or Error.
     fn patch(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, ()>;
 
-    fn get_collection_types(&self) -> &Vec<RedfishCollectionType>;
+    fn get_collection_types(&self) -> &[RedfishCollectionType];
 
-    fn get_resource_types(&self) -> &Vec<RedfishResourceType>;
+    fn get_resource_types(&self) -> &[RedfishResourceType];
 }
 
 pub fn app<T: RedfishTree + Send + Sync + 'static>(tree: T) -> NormalizePath<Router> {
