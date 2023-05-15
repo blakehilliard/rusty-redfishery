@@ -902,4 +902,40 @@ mod tests {
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         assert_eq!(body, "");
     }
+
+    #[tokio::test]
+    async fn get_bad_odata_version() {
+        let mut app = app();
+        let request = Request::get("/redfish/v1").header("OData-Version", "4.1").body(Body::empty()).unwrap();
+        let response = app.ready().await.unwrap().call(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::PRECONDITION_FAILED);
+    }
+
+    #[tokio::test]
+    async fn patch_bad_odata_version() {
+        let mut app = app();
+        let data = json!({"SessionTimeout": 300});
+        let body = Body::from(serde_json::to_vec(&data).unwrap());
+        let request = Request::patch("/redfish/v1/SessionService").header("OData-Version", "4.1").body(body).unwrap();
+        let response = app.ready().await.unwrap().call(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::PRECONDITION_FAILED);
+    }
+
+    #[tokio::test]
+    async fn post_bad_odata_version() {
+        let mut app = app();
+        let data = json!({});
+        let body = Body::from(serde_json::to_vec(&data).unwrap());
+        let request = Request::post("/redfish/v1/SessionService/Sessions").header("OData-Version", "4.1").body(body).unwrap();
+        let response = app.ready().await.unwrap().call(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::PRECONDITION_FAILED);
+    }
+
+    #[tokio::test]
+    async fn delete_bad_odata_version() {
+        let mut app = app();
+        let request = Request::delete("/redfish/v1/SessionService/Sessions/1").header("OData-Version", "4.1").body(Body::empty()).unwrap();
+        let response = app.ready().await.unwrap().call(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::PRECONDITION_FAILED);
+    }
 }
