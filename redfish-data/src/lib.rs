@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use serde::Serialize;
 use serde_json::{Value, json, Map};
 
 #[derive(Clone, PartialEq)]
@@ -86,7 +86,7 @@ impl RedfishCollectionType {
     }
 }
 
-// TODO: Can I make this serializable by serde_json without to_hash_map()?
+#[derive(Serialize)]
 struct ODataServiceValue {
     kind: String,
     name: String,
@@ -94,33 +94,25 @@ struct ODataServiceValue {
 }
 
 impl ODataServiceValue {
-    pub fn new(url: &str) -> Self {
+    fn new(url: &str) -> Self {
         Self {
             kind: String::from("Singleton"),
             name: String::from(std::path::Path::new(url).file_name().unwrap().to_str().unwrap()),
             url: String::from(url),
         }
     }
-
-    pub fn to_hash_map(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert(String::from("kind"), self.kind.clone());
-        map.insert(String::from("name"), self.name.clone());
-        map.insert(String::from("url"), self.url.clone());
-        map
-    }
 }
 
 pub fn get_odata_service_document(service_root: &Map<String, Value>) -> Value {
     let mut values = Vec::new();
-    values.push(ODataServiceValue::new("/redfish/v1").to_hash_map());
+    values.push(ODataServiceValue::new("/redfish/v1"));
 
     for val in service_root.values() {
         let val = val.as_object();
         if val.is_some() {
             let val = val.unwrap();
             if val.contains_key("@odata.id") {
-                values.push(ODataServiceValue::new(val["@odata.id"].as_str().unwrap()).to_hash_map());
+                values.push(ODataServiceValue::new(val["@odata.id"].as_str().unwrap()));
             }
         }
     }
