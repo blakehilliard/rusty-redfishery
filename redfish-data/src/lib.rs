@@ -83,6 +83,28 @@ impl RedfishCollectionType {
     }
 }
 
+pub fn get_odata_metadata_document(collection_types: &[RedfishCollectionType], resource_types: &[RedfishResourceType]) -> String {
+    let mut body = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<edmx:Edmx xmlns:edmx=\"http://docs.oasis-open.org/odata/ns/edmx\" Version=\"4.0\">\n");
+    let mut service_root_type: Option<&RedfishResourceType> = None;
+    for collection_type in collection_types {
+        body.push_str(collection_type.to_xml().as_str());
+    }
+    for resource_type in resource_types {
+        body.push_str(resource_type.to_xml().as_str());
+        if resource_type.name == "ServiceRoot" {
+            service_root_type = Some(resource_type);
+        }
+    }
+    if service_root_type.is_some() {
+        body.push_str("  <edmx:DataServices>\n");
+        body.push_str("    <Schema xmlns=\"http://docs.oasis-open.org/odata/ns/edm\" Namespace=\"Service\">\n");
+        body.push_str(format!("      <EntityContainer Name=\"Service\" Extends=\"{}.ServiceContainer\" />\n", service_root_type.unwrap().get_versioned_name()).as_str());
+        body.push_str("    </Schema>\n  </edmx:DataServices>\n");
+    }
+    body.push_str("</edmx:Edmx>\n");
+    body
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -98,7 +120,7 @@ mod tests {
         let version = RedfishResourceSchemaVersion::new(1, 2, 3);
         assert_eq!(version.to_str(), "v1_2_3");
     }
-    
+
     #[test]
     fn dmtf_collection_type() {
         let collection_type = RedfishCollectionType::new_dmtf_v1(String::from("SessionCollection"));
@@ -117,5 +139,33 @@ mod tests {
         exp_xml.push_str("    <edmx:Include Namespace=\"Role.v1_3_0\" />\n");
         exp_xml.push_str("  </edmx:Reference>\n");
         assert_eq!(resource_type.to_xml(), exp_xml);
+    }
+
+    #[test]
+    fn odata_metaata_document() {
+        let mut collection_types = Vec::new();
+        collection_types.push(RedfishCollectionType::new_dmtf_v1(String::from("SessionCollection")));
+
+        let mut resource_types = Vec::new();
+        resource_types.push(RedfishResourceType::new_dmtf(String::from("ServiceRoot"), RedfishResourceSchemaVersion::new(1, 15, 0)));
+
+        let exp_xml = String::from(r#"<?xml version="1.0" encoding="UTF-8"?>
+<edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" Version="4.0">
+  <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/SessionCollection_v1.xml">
+    <edmx:Include Namespace="SessionCollection" />
+  </edmx:Reference>
+  <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/ServiceRoot_v1.xml">
+    <edmx:Include Namespace="ServiceRoot" />
+    <edmx:Include Namespace="ServiceRoot.v1_15_0" />
+  </edmx:Reference>
+  <edmx:DataServices>
+    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Service">
+      <EntityContainer Name="Service" Extends="ServiceRoot.v1_15_0.ServiceContainer" />
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>
+"#);
+        let doc = get_odata_metadata_document(collection_types.as_slice(), resource_types.as_slice());
+        assert_eq!(doc, exp_xml);
     }
 }

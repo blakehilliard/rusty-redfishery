@@ -16,6 +16,7 @@ use http::header;
 use redfish_data::{
     RedfishCollectionType,
     RedfishResourceType,
+    get_odata_metadata_document,
 };
 
 mod json;
@@ -180,26 +181,7 @@ async fn get_odata_metadata_doc(
     State(state): State<AppState>,
 ) -> Response {
     let tree = state.tree.lock().unwrap();
-
-    let mut body = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<edmx:Edmx xmlns:edmx=\"http://docs.oasis-open.org/odata/ns/edmx\" Version=\"4.0\">\n");
-    let mut service_root_type: Option<&RedfishResourceType> = None;
-    for collection_type in tree.get_collection_types() {
-        body.push_str(collection_type.to_xml().as_str());
-    }
-    for resource_type in tree.get_resource_types() {
-        body.push_str(resource_type.to_xml().as_str());
-        if resource_type.name == "ServiceRoot" {
-            service_root_type = Some(resource_type);
-        }
-    }
-    if service_root_type.is_some() {
-        body.push_str("  <edmx:DataServices>\n");
-        body.push_str("    <Schema xmlns=\"http://docs.oasis-open.org/odata/ns/edm\" Namespace=\"Service\">\n");
-        body.push_str(format!("      <EntityContainer Name=\"Service\" Extends=\"{}.ServiceContainer\" />\n", service_root_type.unwrap().get_versioned_name()).as_str());
-        body.push_str("    </Schema>\n  </edmx:DataServices>\n");
-    }
-    body.push_str("</edmx:Edmx>\n");
-
+    let body = get_odata_metadata_document(tree.get_collection_types(), tree.get_resource_types());
     (
         [(header::CONTENT_TYPE, "application/xml")],
         [(header::ALLOW, "GET,HEAD")],
