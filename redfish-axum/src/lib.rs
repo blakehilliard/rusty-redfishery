@@ -11,8 +11,8 @@ use axum::{
 };
 use tower_http::normalize_path::{NormalizePath, NormalizePathLayer};
 use tower::layer::Layer;
-use serde_json::{Value, json};
-use http::header;
+use serde_json::{json};
+use http::{header, HeaderMap};
 use redfish_data::{
     RedfishCollectionType,
     RedfishResourceType,
@@ -80,9 +80,15 @@ struct AppState {
 }
 
 async fn getter(
+    headers: HeaderMap,
     Path(path): Path<String>,
     State(state): State<AppState>,
 ) -> Response {
+    if let Some(odata_version) = headers.get("odata-version") {
+        if odata_version != "4.0" {
+            return StatusCode::PRECONDITION_FAILED.into_response();
+        }
+    }
     let uri = "/redfish/".to_owned() + &path;
     let tree = state.tree.lock().unwrap();
     match tree.get(uri.as_str()) {
@@ -95,9 +101,15 @@ async fn getter(
 }
 
 async fn deleter(
+    headers: HeaderMap,
     Path(path): Path<String>,
     State(state): State<AppState>,
 ) -> Response {
+    if let Some(odata_version) = headers.get("odata-version") {
+        if odata_version != "4.0" {
+            return StatusCode::PRECONDITION_FAILED.into_response();
+        }
+    }
     let uri = "/redfish/".to_owned() + &path;
     let mut tree = state.tree.lock().unwrap();
     match tree.delete(uri.as_str()) {
@@ -118,10 +130,16 @@ async fn deleter(
 }
 
 async fn poster(
+    headers: HeaderMap,
     Path(path): Path<String>,
     State(state): State<AppState>,
     Json(payload): Json<serde_json::Value>,
 ) -> Response {
+    if let Some(odata_version) = headers.get("odata-version") {
+        if odata_version != "4.0" {
+            return StatusCode::PRECONDITION_FAILED.into_response();
+        }
+    }
     let uri = "/redfish/".to_owned() + &path;
     let mut tree = state.tree.lock().unwrap();
     if let Some(node) = tree.create(uri.as_str(), payload) {
@@ -145,10 +163,16 @@ async fn poster(
 }
 
 async fn patcher(
+    headers: HeaderMap,
     Path(path): Path<String>,
     State(state): State<AppState>,
     Json(payload): Json<serde_json::Value>,
 ) -> Response {
+    if let Some(odata_version) = headers.get("odata-version") {
+        if odata_version != "4.0" {
+            return StatusCode::PRECONDITION_FAILED.into_response();
+        }
+    }
     let uri = "/redfish/".to_owned() + &path;
     let mut tree = state.tree.lock().unwrap();
     match tree.patch(uri.as_str(), payload) {
@@ -171,16 +195,27 @@ async fn patcher(
     }
 }
 
-async fn get_redfish() -> JsonGetResponse<Value> {
+async fn get_redfish(headers: HeaderMap) -> Response {
+    if let Some(odata_version) = headers.get("odata-version") {
+        if odata_version != "4.0" {
+            return StatusCode::PRECONDITION_FAILED.into_response();
+        }
+    }
     JsonGetResponse {
         data: json!({ "v1": "/redfish/v1/" }),
         allow: String::from("GET,HEAD"),
-    }
+    }.into_response()
 }
 
 async fn get_odata_metadata_doc(
+    headers: HeaderMap,
     State(state): State<AppState>,
 ) -> Response {
+    if let Some(odata_version) = headers.get("odata-version") {
+        if odata_version != "4.0" {
+            return StatusCode::PRECONDITION_FAILED.into_response();
+        }
+    }
     let tree = state.tree.lock().unwrap();
     let body = get_odata_metadata_document(tree.get_collection_types(), tree.get_resource_types());
     (

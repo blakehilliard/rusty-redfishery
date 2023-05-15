@@ -916,7 +916,11 @@ mod tests {
         let mut app = app();
         let data = json!({"SessionTimeout": 300});
         let body = Body::from(serde_json::to_vec(&data).unwrap());
-        let request = Request::patch("/redfish/v1/SessionService").header("OData-Version", "4.1").body(body).unwrap();
+        let request = Request::patch("/redfish/v1/SessionService")
+            .header("Content-Type", "application/json")
+            .header("OData-Version", "4.1")
+            .body(body)
+            .unwrap();
         let response = app.ready().await.unwrap().call(request).await.unwrap();
         assert_eq!(response.status(), StatusCode::PRECONDITION_FAILED);
     }
@@ -926,7 +930,11 @@ mod tests {
         let mut app = app();
         let data = json!({});
         let body = Body::from(serde_json::to_vec(&data).unwrap());
-        let request = Request::post("/redfish/v1/SessionService/Sessions").header("OData-Version", "4.1").body(body).unwrap();
+        let request = Request::post("/redfish/v1/SessionService/Sessions")
+            .header("Content-Type", "application/json")
+            .header("OData-Version", "4.1")
+            .body(body)
+            .unwrap();
         let response = app.ready().await.unwrap().call(request).await.unwrap();
         assert_eq!(response.status(), StatusCode::PRECONDITION_FAILED);
     }
