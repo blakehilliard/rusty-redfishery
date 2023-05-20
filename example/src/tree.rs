@@ -68,13 +68,10 @@ fn get_uri_id(uri: &str) -> String {
     }
 }
 
-#[allow(dead_code)]
 pub struct RedfishResource {
     uri: String, //TODO: Enforce things here? Does DMTF recommend trailing slash or no?
     resource_type: String, // FIXME: Name conflicts with RedfishResourceType ?
     schema_version: RedfishResourceSchemaVersion,
-    term_name: String, //TODO: Constructor where this is optional and derived from resource_type
-    id: String, //TODO: Better name?
     body: Map<String, Value>,
     deletable: bool,
     patchable: bool,
@@ -100,7 +97,7 @@ impl RedfishResource {
         body.insert(String::from("Id"), json!(id));
         body.insert(String::from("Name"), json!(name));
         Self {
-            uri: String::from(uri), resource_type, schema_version, term_name, id, body, deletable, patchable, collection,
+            uri: String::from(uri), resource_type, schema_version, body, deletable, patchable, collection,
         }
     }
 }
