@@ -117,7 +117,7 @@ impl RedfishNode for RedfishResource {
 struct MockTree {
     //FIXME: Would be better as a Map
     resources: Vec<RedfishResource>,
-    collections: Vec<RedfishCollection>,
+    collections: HashMap<String, RedfishCollection>,
     collection_types: Vec<RedfishCollectionType>,
     resource_types: Vec<RedfishResourceType>,
 }
@@ -126,7 +126,7 @@ impl MockTree {
     fn new() -> Self {
         Self {
             resources: Vec::new(),
-            collections: Vec::new(),
+            collections: HashMap::new(),
             collection_types: Vec::new(),
             resource_types: Vec::new(),
          }
@@ -147,7 +147,7 @@ impl MockTree {
     fn add_collection(&mut self, collection: RedfishCollection) {
         let collection_type_name = collection.resource_type.clone();
         let schema_version = collection.schema_version.clone();
-        self.collections.push(collection);
+        self.collections.insert(collection.uri.clone(), collection);
         for collection_type in self.collection_types.iter() {
             if collection_type.name == collection_type_name && collection_type.version == schema_version {
                 return;
@@ -164,61 +164,55 @@ impl RedfishTree for MockTree {
                 return Some(node);
             }
         }
-        for node in &self.collections {
-            if uri == node.get_uri() {
-                return Some(node);
-            }
+        if let Some(collection) = self.collections.get(uri) {
+            return Some(collection);
         }
         None
     }
 
     fn create(&mut self, uri: &str, req: serde_json::Value) -> Option<&dyn RedfishNode> {
-        for collection in self.collections.iter_mut() {
-            if uri == collection.get_uri() {
-                // TODO: Don't hardcode this!
-                if uri != "/redfish/v1/SessionService/Sessions" {
-                    return None;
-                }
+        let collection = self.collections.get_mut(uri)?;
+        // TODO: Don't hardcode this!
+        if uri != "/redfish/v1/SessionService/Sessions" {
+            return None;
+        }
 
-                // Look at existing members to see next Id to pick
-                // TODO: Less catastrophic error handling
-                let mut highest = 0;
-                for member in collection.members.iter() {
-                    let id = get_uri_id(member.as_str());
-                    let id = id.parse().unwrap();
-                    if id > highest {
-                        highest = id;
-                    }
-                }
-                let id = (highest + 1).to_string();
-                let member_uri = format!("{}/{}", collection.get_uri(), id);
-
-                // Create new resource and add it to the tree.
-                // TODO: Move lots of this stuff into SessionCollection struct???
-                let new_member = RedfishResource::new(
-                    member_uri.as_str(),
-                    String::from("Session"),
-                    RedfishResourceSchemaVersion::new(1, 6, 0),
-                    String::from("Session"),
-                    String::from(format!("Session {}", id)),
-                    true,
-                    false,
-                    Some(String::from(uri)),
-                    json!({
-                        "UserName": req.as_object().unwrap().get("UserName").unwrap().as_str(),
-                        "Password": serde_json::Value::Null,
-                    }),
-                );
-                self.resources.push(new_member);
-
-                // Update members of collection.
-                collection.members.push(member_uri.clone());
-
-                // Return new resource.
-                return self.get(member_uri.as_str());
+        // Look at existing members to see next Id to pick
+        // TODO: Less catastrophic error handling
+        let mut highest = 0;
+        for member in collection.members.iter() {
+            let id = get_uri_id(member.as_str());
+            let id = id.parse().unwrap();
+            if id > highest {
+                highest = id;
             }
         }
-        None
+        let id = (highest + 1).to_string();
+        let member_uri = format!("{}/{}", collection.get_uri(), id);
+
+        // Create new resource and add it to the tree.
+        // TODO: Move lots of this stuff into SessionCollection struct???
+        let new_member = RedfishResource::new(
+            member_uri.as_str(),
+            String::from("Session"),
+            RedfishResourceSchemaVersion::new(1, 6, 0),
+            String::from("Session"),
+            String::from(format!("Session {}", id)),
+            true,
+            false,
+            Some(String::from(uri)),
+            json!({
+                "UserName": req.as_object().unwrap().get("UserName").unwrap().as_str(),
+                "Password": serde_json::Value::Null,
+            }),
+        );
+        self.resources.push(new_member);
+
+        // Update members of collection.
+        collection.members.push(member_uri.clone());
+
+        // Return new resource.
+        self.get(member_uri.as_str())
     }
 
     fn delete(&mut self, uri: &str) -> Result<(), ()> {
@@ -226,12 +220,9 @@ impl RedfishTree for MockTree {
             if self.resources[index].get_uri() == uri {
                 if self.resources[index].can_delete() {
                     if let Some(collection_uri) = &self.resources[index].collection {
-                        for collection in self.collections.iter_mut() {
-                            if collection_uri == collection.get_uri() {
-                                if let Some(member_index) = collection.members.iter().position(|x| x == uri) {
-                                    collection.members.remove(member_index);
-                                }
-                                break;
+                        if let Some(collection) = self.collections.get_mut(collection_uri) {
+                            if let Some(member_index) = collection.members.iter().position(|x| x == uri) {
+                                collection.members.remove(member_index);
                             }
                         }
                     }
