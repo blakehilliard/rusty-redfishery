@@ -5,7 +5,7 @@ use axum::{
     Router,
 };
 use tower_http::normalize_path::{NormalizePath};
-use serde_json::{Value, json};
+use serde_json::{Value, json, Map};
 use redfish_axum::{
     RedfishNode,
     RedfishTree,
@@ -68,20 +68,30 @@ struct RedfishResource {
     schema_version: RedfishResourceSchemaVersion,
     term_name: String, //TODO: Constructor where this is optional and derived from resource_type
     id: String, //TODO: Better name?
-    body: Value, //TODO: Enforce map
+    body: Map<String, Value>,
     deletable: bool,
     patchable: bool,
     collection: Option<String>,
 }
 
 impl RedfishResource {
-    fn new(uri: &str, resource_type: String, schema_version: RedfishResourceSchemaVersion, term_name: String, name: String, deletable: bool, patchable: bool, collection: Option<String>, rest: Value) -> Self {
-        let mut body = rest;
-        body["@odata.id"] = json!(uri);
-        body["@odata.type"] = json!(format!("#{}.{}.{}", resource_type, schema_version.to_str(), term_name));
+    fn new(
+        uri: &str,
+        resource_type: String,
+        schema_version: RedfishResourceSchemaVersion,
+        term_name: String,
+        name: String,
+        deletable: bool,
+        patchable: bool,
+        collection: Option<String>,
+        rest: Value,
+    ) -> Self {
+        let mut body = rest.as_object().unwrap().clone();
+        body.insert(String::from("@odata.id"), json!(uri));
+        body.insert(String::from("@odata.type"), json!(format!("#{}.{}.{}", resource_type, schema_version.to_str(), term_name)));
         let id = get_uri_id(uri);
-        body["Id"] = json!(id);
-        body["Name"] = json!(name);
+        body.insert(String::from("Id"), json!(id));
+        body.insert(String::from("Name"), json!(name));
         Self {
             uri: String::from(uri), resource_type, schema_version, term_name, id, body, deletable, patchable, collection,
         }
@@ -94,7 +104,7 @@ impl RedfishNode for RedfishResource {
     }
 
     fn get_body(&self) -> Value {
-        self.body.clone()
+        Value::Object(self.body.clone())
     }
 
     fn can_delete(&self) -> bool { self.deletable }
@@ -246,8 +256,7 @@ impl RedfishTree for MockTree {
                 // TODO: Move to per-resource functions
                 // FIXME: Allow patch that doesn't set this! And do correct error handling!
                 let new_timeout = req.as_object().unwrap().get("SessionTimeout").unwrap().as_u64().unwrap();
-                let cur_timeout = resource.body.as_object_mut().unwrap().get_mut("SessionTimeout").unwrap();
-                *cur_timeout = serde_json::Value::from(new_timeout);
+                resource.body["SessionTimeout"] = Value::from(new_timeout);
                 return Ok(resource);
             }
         }
