@@ -29,10 +29,8 @@ where
                     header::ALLOW,
                     self.allow.as_str(),
                 )],
-                [(
-                    "OData-Version",
-                    "4.0",
-                )],
+                [("OData-Version", "4.0")],
+                [("Cache-Control", "no-cache")],
                 buf.into_inner().freeze(),
             )
                 .into_response(),
@@ -42,6 +40,7 @@ where
                     header::CONTENT_TYPE,
                     HeaderValue::from_static(mime::TEXT_PLAIN_UTF_8.as_ref()),
                 )],
+                [("Cache-Control", "no-cache")],
                 err.to_string(),
             )
                 .into_response(),

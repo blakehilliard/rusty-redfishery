@@ -264,6 +264,7 @@ mod tests {
         assert_eq!(response.status(), status_code);
         assert_eq!(response.headers().get("OData-Version").unwrap().to_str().unwrap(), "4.0");
         assert_eq!(response.headers().get("allow").unwrap().to_str().unwrap(), allow);
+        assert_eq!(response.headers().get("cache-control").unwrap().to_str().unwrap(), "no-cache");
         get_response_json(response).await
     }
 
@@ -299,6 +300,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.headers().get("content-type").unwrap().to_str().unwrap(), "application/json");
         assert_eq!(response.headers().get("OData-Version").unwrap().to_str().unwrap(), "4.0");
+        assert_eq!(response.headers().get("cache-control").unwrap().to_str().unwrap(), "no-cache");
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         assert_eq!(body, "");
     }
@@ -529,6 +531,7 @@ mod tests {
         let response = patch(&mut app, "/redfish/v1/SessionService", data).await;
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.headers().get("allow").unwrap().to_str().unwrap(), "GET,HEAD,PATCH");
+        assert_eq!(response.headers().get("cache-control").unwrap().to_str().unwrap(), "no-cache");
 
         let body = get_response_json(response).await;
         assert_eq!(body, json!({
@@ -561,6 +564,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::CREATED);
         assert_eq!(response.headers().get("OData-Version").unwrap().to_str().unwrap(), "4.0");
         assert_eq!(response.headers().get("Location").unwrap().to_str().unwrap(), "/redfish/v1/SessionService/Sessions/2");
+        assert_eq!(response.headers().get("cache-control").unwrap().to_str().unwrap(), "no-cache");
 
         let body = get_response_json(response).await;
         assert_eq!(body, json!({
@@ -606,6 +610,7 @@ mod tests {
 
         let response = delete(&mut app, "/redfish/v1/SessionService/Sessions/1").await;
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert_eq!(response.headers().get("cache-control").unwrap().to_str().unwrap(), "no-cache");
 
         let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, "GET,HEAD,POST").await;
         assert_eq!(body, json!({

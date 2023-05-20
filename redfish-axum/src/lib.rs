@@ -86,7 +86,7 @@ async fn getter(
 ) -> Response {
     if let Some(odata_version) = headers.get("odata-version") {
         if odata_version != "4.0" {
-            return StatusCode::PRECONDITION_FAILED.into_response();
+            return bad_odata_version_response();
         }
     }
     let uri = "/redfish/".to_owned() + &path;
@@ -107,23 +107,28 @@ async fn deleter(
 ) -> Response {
     if let Some(odata_version) = headers.get("odata-version") {
         if odata_version != "4.0" {
-            return StatusCode::PRECONDITION_FAILED.into_response();
+            return bad_odata_version_response();
         }
     }
     let uri = "/redfish/".to_owned() + &path;
     let mut tree = state.tree.lock().unwrap();
     match tree.delete(uri.as_str()) {
-        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Ok(_) => (
+            StatusCode::NO_CONTENT,
+            [("Cache-Control", "no-cache")],
+        ).into_response(),
         Err(_) => {
             match tree.get(uri.as_str()) {
                 Some(node) => (
                     StatusCode::METHOD_NOT_ALLOWED,
-                    [(
-                        header::ALLOW,
-                        node_to_allow(node),
-                    )],
+                    [(header::ALLOW, node_to_allow(node))],
+                    [("OData-Version", "4.0")],
+                    [("Cache-Control", "no-cache")],
                 ).into_response(),
-                _ => StatusCode::NOT_FOUND.into_response(),
+                _ => (
+                    StatusCode::NOT_FOUND,
+                    [("Cache-Control", "no-cache")],
+                ).into_response(),
             }
         }
     }
@@ -137,7 +142,7 @@ async fn poster(
 ) -> Response {
     if let Some(odata_version) = headers.get("odata-version") {
         if odata_version != "4.0" {
-            return StatusCode::PRECONDITION_FAILED.into_response();
+            return bad_odata_version_response();
         }
     }
 
@@ -152,18 +157,22 @@ async fn poster(
             StatusCode::CREATED,
             [(header::LOCATION, node.get_uri())],
             [("OData-Version", "4.0")],
+            [("Cache-Control", "no-cache")],
             Json(node.get_body()),
         ).into_response();
     }
     match tree.get(uri.as_str()) {
         Some(node) => (
             StatusCode::METHOD_NOT_ALLOWED,
-            [(
-                header::ALLOW,
-                node_to_allow(node),
-            )],
+            [(header::ALLOW, node_to_allow(node))],
+            [("OData-Version", "4.0")],
+            [("Cache-Control", "no-cache")],
         ).into_response(),
-        _ => StatusCode::NOT_FOUND.into_response(),
+        _ => (
+            StatusCode::NOT_FOUND,
+            [("OData-Version", "4.0")],
+            [("Cache-Control", "no-cache")],
+        ).into_response(),
     }
 }
 
@@ -175,7 +184,7 @@ async fn patcher(
 ) -> Response {
     if let Some(odata_version) = headers.get("odata-version") {
         if odata_version != "4.0" {
-            return StatusCode::PRECONDITION_FAILED.into_response();
+            return bad_odata_version_response();
         }
     }
     let uri = "/redfish/".to_owned() + &path;
@@ -189,10 +198,8 @@ async fn patcher(
             match tree.get(uri.as_str()) {
                 Some(node) => (
                     StatusCode::METHOD_NOT_ALLOWED,
-                    [(
-                        header::ALLOW,
-                        node_to_allow(node),
-                    )],
+                    [(header::ALLOW, node_to_allow(node))],
+                    [("Cache-Control", "no-cache")],
                 ).into_response(),
                 _ => StatusCode::NOT_FOUND.into_response(),
             }
@@ -203,7 +210,7 @@ async fn patcher(
 async fn get_redfish(headers: HeaderMap) -> Response {
     if let Some(odata_version) = headers.get("odata-version") {
         if odata_version != "4.0" {
-            return StatusCode::PRECONDITION_FAILED.into_response();
+            return bad_odata_version_response();
         }
     }
     JsonGetResponse {
@@ -218,7 +225,7 @@ async fn get_odata_metadata_doc(
 ) -> Response {
     if let Some(odata_version) = headers.get("odata-version") {
         if odata_version != "4.0" {
-            return StatusCode::PRECONDITION_FAILED.into_response();
+            return bad_odata_version_response();
         }
     }
     let tree = state.tree.lock().unwrap();
@@ -227,6 +234,7 @@ async fn get_odata_metadata_doc(
         [(header::CONTENT_TYPE, "application/xml")],
         [(header::ALLOW, "GET,HEAD")],
         [("OData-Version", "4.0")],
+        [("Cache-Control", "no-cache")],
         body,
     ).into_response()
 }
@@ -254,4 +262,12 @@ fn node_to_allow(node: &dyn RedfishNode) -> String {
         allow.push_str(",POST");
     }
     allow
+}
+
+fn bad_odata_version_response() -> Response {
+    (
+        StatusCode::PRECONDITION_FAILED,
+        [("OData-Version", "4.0")],
+        [("Cache-Control", "no-cache")],
+    ).into_response()
 }
