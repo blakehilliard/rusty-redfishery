@@ -192,14 +192,14 @@ impl RedfishTree for MockTree {
         }
     }
 
-    fn delete(&mut self, uri: &str) -> Result<(), ()> {
+    fn delete(&mut self, uri: &str) -> Result<(), RedfishErr> {
         let resource = self.resources.get(uri);
         if resource.is_none() {
-            return Err(());
+            return Err(RedfishErr::NotFound);
         }
         let resource = resource.unwrap();
         if ! resource.can_delete() {
-            return Err(());
+            return Err(RedfishErr::Unauthorized); //FIXME: MethodNotAllowed
         }
         if let Some(collection_uri) = &resource.collection {
             if let Some(collection) = self.collections.get_mut(collection_uri) {

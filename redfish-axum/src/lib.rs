@@ -51,7 +51,7 @@ pub trait RedfishTree {
 
     // Delete a resource, given its URI.
     // Return Ok after it has been deleted, or Error if it cannot be deleted.
-    fn delete(&mut self, uri: &str) -> Result<(), ()>; // FIXME: RedfishErr
+    fn delete(&mut self, uri: &str) -> Result<(), RedfishErr>;
 
     // Patch a resource.
     // Return the patched resource on success, or Error.
