@@ -4,10 +4,44 @@ use axum::{
 };
 use tower_http::normalize_path::{NormalizePath};
 use serde_json::json;
-use redfish_data::RedfishResourceSchemaVersion;
+use redfish_axum::RedfishNode;
+use redfish_data::{
+    RedfishResourceSchemaVersion,
+    get_uri_id,
+};
 
 mod tree;
 use tree::{MockTree, RedfishCollection, RedfishResource};
+
+fn create_session(collection: &RedfishCollection, req: serde_json::Value) -> Result<RedfishResource, ()> {
+    // Look at existing members to see next Id to pick
+    let mut highest = 0;
+    for member in collection.members.iter() {
+        let id = get_uri_id(member.as_str());
+        let id = id.parse().unwrap(); // TODO: Not so catastrophic?
+        if id > highest {
+            highest = id;
+        }
+    }
+    let id = (highest + 1).to_string();
+    let member_uri = format!("{}/{}", collection.get_uri(), id);
+
+    // Return new resource
+    Ok(RedfishResource::new(
+        member_uri.as_str(),
+        String::from("Session"),
+        RedfishResourceSchemaVersion::new(1, 6, 0),
+        String::from("Session"),
+        String::from(format!("Session {}", id)),
+        true,
+        false,
+        Some(String::from(collection.get_uri())),
+        json!({
+            "UserName": req.as_object().unwrap().get("UserName").unwrap().as_str(),
+            "Password": serde_json::Value::Null,
+        }),
+    ))
+}
 
 fn get_mock_tree() -> MockTree {
     let mut tree = MockTree::new();
@@ -56,7 +90,7 @@ fn get_mock_tree() -> MockTree {
         String::from("SessionCollection"),
         String::from("Session Collection"),
         vec![String::from("/redfish/v1/SessionService/Sessions/1")],
-        true,
+        Some(create_session),
     ));
     tree.add_resource(RedfishResource::new(
         "/redfish/v1/SessionService/Sessions/1",
@@ -95,7 +129,7 @@ fn get_mock_tree() -> MockTree {
         String::from("ManagerAccountCollection"),
         String::from("Account Collection"),
         vec![String::from("/redfish/v1/AccountService/Accounts/admin")],
-        true,
+        None,
     ));
     tree.add_resource(RedfishResource::new(
         "/redfish/v1/AccountService/Accounts/admin",
@@ -127,7 +161,7 @@ fn get_mock_tree() -> MockTree {
             String::from("/redfish/v1/AccountService/Roles/Operator"),
             String::from("/redfish/v1/AccountService/Roles/ReadOnly"),
         ],
-        true,
+        None,
     ));
     tree.add_resource(RedfishResource::new(
         "/redfish/v1/AccountService/Roles/Administrator",

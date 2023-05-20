@@ -36,9 +36,9 @@ pub trait RedfishTree {
     fn get(&self, uri: &str) -> Option<&dyn RedfishNode>;
 
     // Create a resource, given the collction URI and JSON input.
-    // Return Some(RedfishNode) of the new resource, or None on fail.
+    // Return Ok(RedfishNode) of the new resource, or Err.
     // TODO: Properly handle various error cases.
-    fn create(&mut self, uri: &str, req: serde_json::Value) -> Option<&dyn RedfishNode>;
+    fn create(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, ()>;
 
     // Delete a resource, given its URI.
     // Return Ok after it has been deleted, or Error if it cannot be deleted.
@@ -142,7 +142,7 @@ async fn poster(
     }
     let uri = "/redfish/".to_owned() + &path;
     let mut tree = state.tree.lock().unwrap();
-    if let Some(node) = tree.create(uri.as_str(), payload) {
+    if let Ok(node) = tree.create(uri.as_str(), payload) {
         return (
             StatusCode::CREATED,
             [(header::LOCATION, node.get_uri())],

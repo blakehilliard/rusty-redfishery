@@ -146,9 +146,22 @@ pub fn get_odata_metadata_document(collection_types: &[RedfishCollectionType], r
     body
 }
 
+pub fn get_uri_id(uri: &str) -> String {
+    match uri {
+        "/redfish/v1" => String::from("RootService"),
+        _ => String::from(std::path::Path::new(uri).file_name().unwrap().to_str().unwrap()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn uri_id() {
+        assert_eq!(get_uri_id("/redfish/v1"), String::from("RootService"));
+        assert_eq!(get_uri_id("/redfish/v1/Chassis"), String::from("Chassis"));
+    }
 
     #[test]
     fn collection_schema_version() {
