@@ -633,6 +633,16 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn post_to_members() {
+        let mut app = app();
+        let data = json!({"UserName": "Obiwan", "Password": "n/a"});
+        let response = post(&mut app, "/redfish/v1/SessionService/Sessions/Members", data).await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        assert_eq!(response.headers().get("OData-Version").unwrap().to_str().unwrap(), "4.0");
+        assert_eq!(response.headers().get("Location").unwrap().to_str().unwrap(), "/redfish/v1/SessionService/Sessions/2");
+    }
+
+    #[tokio::test]
     async fn post_not_found() {
         let mut app = app();
         let response = post(&mut app, "/redfish/v1/notfound", json!({})).await;

@@ -140,7 +140,12 @@ async fn poster(
             return StatusCode::PRECONDITION_FAILED.into_response();
         }
     }
-    let uri = "/redfish/".to_owned() + &path;
+
+    let mut uri = "/redfish/".to_owned() + &path;
+    if let Some(stripped) = uri.strip_suffix("/Members") {
+        uri = stripped.to_string();
+    }
+
     let mut tree = state.tree.lock().unwrap();
     if let Ok(node) = tree.create(uri.as_str(), payload) {
         return (
