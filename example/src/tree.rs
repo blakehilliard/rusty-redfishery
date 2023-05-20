@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use serde_json::{Value, json, Map};
 use redfish_axum::{
     RedfishNode,
-    RedfishTree,
+    RedfishTree, RedfishErr,
 };
 use redfish_data::{
     RedfishCollectionType,
@@ -162,14 +162,14 @@ impl MockTree {
 }
 
 impl RedfishTree for MockTree {
-    fn get(&self, uri: &str) -> Option<&dyn RedfishNode> {
+    fn get(&self, uri: &str) -> Result<&dyn RedfishNode, RedfishErr> {
         if let Some(resource) = self.resources.get(uri) {
-            return Some(resource);
+            return Ok(resource);
         }
         if let Some(collection) = self.collections.get(uri) {
-            return Some(collection);
+            return Ok(collection);
         }
-        None
+        Err(RedfishErr::NotFound)
     }
 
     fn create(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, ()> {
@@ -188,8 +188,8 @@ impl RedfishTree for MockTree {
                 collection.members.push(member_uri.clone());
                 // Return new resource.
                 match self.get(member_uri.as_str()) {
-                    Some(resource) => Ok(resource),
-                    None => Err(())
+                    Ok(resource) => Ok(resource),
+                    Err(_) => Err(())
                 }
             }
         }

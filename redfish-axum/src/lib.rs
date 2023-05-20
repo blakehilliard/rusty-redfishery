@@ -22,19 +22,26 @@ use redfish_data::{
 mod json;
 use json::JsonResponse;
 
+// TODO: This is nice for straight-forward cases, but how will I allow any custom error response?
+#[derive(Debug)]
+pub enum RedfishErr {
+    NotFound,
+    Unauthorized,
+}
+
 pub trait RedfishNode {
     fn get_uri(&self) -> &str;
     fn get_body(&self) -> serde_json::Value;
     fn can_post(&self) -> bool;
     fn can_delete(&self) -> bool;
     fn can_patch(&self) -> bool;
-    fn described_by(&self) -> Option<&str>; // TODO: Stricter type???
+    fn described_by(&self) -> Option<&str>; // TODO: Stricter URL type???
 }
 
 // TODO: Should all these methods be async?
 pub trait RedfishTree {
     // Return Some(RedfishNode) matching the given URI, or None if it doesn't exist
-    fn get(&self, uri: &str) -> Option<&dyn RedfishNode>;
+    fn get(&self, uri: &str) -> Result<&dyn RedfishNode, RedfishErr>;
 
     // Create a resource, given the collction URI and JSON input.
     // Return Ok(RedfishNode) of the new resource, or Err.
@@ -92,9 +99,19 @@ async fn getter(
     }
     let uri = "/redfish/".to_owned() + &path;
     let tree = state.tree.lock().unwrap();
+    /*
+    let mut session_id: Option<String> = None;
+    if let Some(token) = headers.get("x-auth-token") {
+        session_id = get_token_session(token);
+        if session_id.is_none() {
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
+    }
+    match tree.get(uri.as_str(), session_id) {
+    */
     match tree.get(uri.as_str()) {
-        Some(node) => get_node_get_response(node),
-        _ => StatusCode::NOT_FOUND.into_response()
+        Ok(node) => get_node_get_response(node),
+        Err(error) => get_error_response(error),
     }
 }
 
@@ -117,7 +134,7 @@ async fn deleter(
         ).into_response(),
         Err(_) => {
             match tree.get(uri.as_str()) {
-                Some(node) => (
+                Ok(node) => (
                     StatusCode::METHOD_NOT_ALLOWED,
                     [(header::ALLOW, node_to_allow(node))],
                     [("OData-Version", "4.0")],
@@ -154,7 +171,7 @@ async fn poster(
         return get_node_created_response(node);
     }
     match tree.get(uri.as_str()) {
-        Some(node) => (
+        Ok(node) => (
             StatusCode::METHOD_NOT_ALLOWED,
             [(header::ALLOW, node_to_allow(node))],
             [("OData-Version", "4.0")],
@@ -185,7 +202,7 @@ async fn patcher(
         Ok(node) => get_node_get_response(node),
         Err(_) => {
             match tree.get(uri.as_str()) {
-                Some(node) => (
+                Ok(node) => (
                     StatusCode::METHOD_NOT_ALLOWED,
                     [(header::ALLOW, node_to_allow(node))],
                     [("Cache-Control", "no-cache")],
@@ -306,4 +323,20 @@ fn get_standard_headers(allow: &str) -> HeaderMap {
     headers.insert(HeaderName::from_static("odata-version"), HeaderValue::from_static("4.0"));
     headers.insert(HeaderName::from_static("cache-control"), HeaderValue::from_static("no-cache"));
     headers
+}
+
+fn get_error_response(error: RedfishErr) -> Response {
+    match error {
+        RedfishErr::NotFound => (
+            StatusCode::NOT_FOUND,
+            // FIXME: Avoid repeating this everywhere
+            [("OData-Version", "4.0")],
+            [("Cache-Control", "no-cache")]
+        ).into_response(),
+        RedfishErr::Unauthorized => (
+            StatusCode::UNAUTHORIZED,
+            [("OData-Version", "4.0")],
+            [("Cache-Control", "no-cache")]
+        ).into_response(),
+    }
 }
