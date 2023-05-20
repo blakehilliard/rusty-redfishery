@@ -115,8 +115,7 @@ impl RedfishNode for RedfishResource {
 }
 
 struct MockTree {
-    //FIXME: Would be better as a Map
-    resources: Vec<RedfishResource>,
+    resources: HashMap<String, RedfishResource>,
     collections: HashMap<String, RedfishCollection>,
     collection_types: Vec<RedfishCollectionType>,
     resource_types: Vec<RedfishResourceType>,
@@ -125,7 +124,7 @@ struct MockTree {
 impl MockTree {
     fn new() -> Self {
         Self {
-            resources: Vec::new(),
+            resources: HashMap::new(),
             collections: HashMap::new(),
             collection_types: Vec::new(),
             resource_types: Vec::new(),
@@ -135,7 +134,7 @@ impl MockTree {
     fn add_resource(&mut self, resource: RedfishResource) {
         let resource_type_name = resource.resource_type.clone();
         let schema_version = resource.schema_version.clone();
-        self.resources.push(resource);
+        self.resources.insert(resource.uri.clone(), resource);
         for resource_type in self.resource_types.iter() {
             if resource_type.name == resource_type_name && resource_type.version == schema_version {
                 return;
@@ -159,10 +158,8 @@ impl MockTree {
 
 impl RedfishTree for MockTree {
     fn get(&self, uri: &str) -> Option<&dyn RedfishNode> {
-        for node in &self.resources {
-            if uri == node.get_uri() {
-                return Some(node);
-            }
+        if let Some(resource) = self.resources.get(uri) {
+            return Some(resource);
         }
         if let Some(collection) = self.collections.get(uri) {
             return Some(collection);
@@ -171,11 +168,11 @@ impl RedfishTree for MockTree {
     }
 
     fn create(&mut self, uri: &str, req: serde_json::Value) -> Option<&dyn RedfishNode> {
-        let collection = self.collections.get_mut(uri)?;
         // TODO: Don't hardcode this!
         if uri != "/redfish/v1/SessionService/Sessions" {
             return None;
         }
+        let collection = self.collections.get_mut(uri)?;
 
         // Look at existing members to see next Id to pick
         // TODO: Less catastrophic error handling
@@ -206,7 +203,7 @@ impl RedfishTree for MockTree {
                 "Password": serde_json::Value::Null,
             }),
         );
-        self.resources.push(new_member);
+        self.resources.insert(member_uri.clone(), new_member);
 
         // Update members of collection.
         collection.members.push(member_uri.clone());
@@ -216,42 +213,42 @@ impl RedfishTree for MockTree {
     }
 
     fn delete(&mut self, uri: &str) -> Result<(), ()> {
-        for index in 0..self.resources.len() {
-            if self.resources[index].get_uri() == uri {
-                if self.resources[index].can_delete() {
-                    if let Some(collection_uri) = &self.resources[index].collection {
-                        if let Some(collection) = self.collections.get_mut(collection_uri) {
-                            if let Some(member_index) = collection.members.iter().position(|x| x == uri) {
-                                collection.members.remove(member_index);
-                            }
-                        }
-                    }
-                    self.resources.remove(index);
-                    return Ok(());
+        let resource = self.resources.get(uri);
+        if resource.is_none() {
+            return Err(());
+        }
+        let resource = resource.unwrap();
+        if ! resource.can_delete() {
+            return Err(());
+        }
+        if let Some(collection_uri) = &resource.collection {
+            if let Some(collection) = self.collections.get_mut(collection_uri) {
+                if let Some(member_index) = collection.members.iter().position(|x| x == uri) {
+                    collection.members.remove(member_index);
                 }
-                return Err(());
             }
         }
-        Err(())
+        self.resources.remove(uri);
+        return Ok(());
     }
 
     fn patch(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, ()> {
-        for resource in self.resources.iter_mut() {
-            if resource.get_uri() == uri {
-                if ! resource.can_patch() {
-                    return Err(());
-                }
-                if uri != "/redfish/v1/SessionService" {
-                    return Err(());
-                }
-                // TODO: Move to per-resource functions
-                // FIXME: Allow patch that doesn't set this! And do correct error handling!
-                let new_timeout = req.as_object().unwrap().get("SessionTimeout").unwrap().as_u64().unwrap();
-                resource.body["SessionTimeout"] = Value::from(new_timeout);
-                return Ok(resource);
-            }
+        let resource = self.resources.get_mut(uri);
+        if resource.is_none() {
+            return Err(());
         }
-        Err(())
+        let resource = resource.unwrap();
+        if ! resource.can_patch() {
+            return Err(());
+        }
+        if uri != "/redfish/v1/SessionService" {
+            return Err(());
+        }
+        // TODO: Move to per-resource functions
+        // FIXME: Allow patch that doesn't set this! And do correct error handling!
+        let new_timeout = req.as_object().unwrap().get("SessionTimeout").unwrap().as_u64().unwrap();
+        resource.body["SessionTimeout"] = Value::from(new_timeout);
+        return Ok(resource);
     }
 
     fn get_collection_types(&self) -> &[RedfishCollectionType] {
