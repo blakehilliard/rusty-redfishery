@@ -1,5 +1,4 @@
 use bytes::{BufMut, BytesMut};
-use serde::Serialize;
 use http::{
     header::{self, HeaderValue},
 };
@@ -7,33 +6,53 @@ use axum::{
     http::StatusCode,
     response::{Response, IntoResponse},
 };
+use serde_json::Value;
 
-pub struct JsonGetResponse<T> {
-    pub data: T,
-    pub allow: String,
+// JSON response that set additional headers required by redfish
+pub struct JsonResponse {
+    data: Value,
+    // TODO: Maybe just store HeaderMap instead?
+    allow: String,
+    described_by: Option<String>,
 }
 
-impl<T> IntoResponse for JsonGetResponse<T>
-where
-    T: Serialize,
+impl JsonResponse {
+    pub fn new(data: Value, allow: String, described_by: Option<&str>) -> Self {
+        let described_by = match described_by {
+            None => None,
+            Some(x) => Some(String::from(x))
+        };
+        Self { data, allow, described_by }
+    }
+}
+
+impl IntoResponse for JsonResponse
 {
     fn into_response(self) -> Response {
         let mut buf = BytesMut::with_capacity(128).writer();
+
         match serde_json::to_writer(&mut buf, &self.data) {
-            Ok(()) => (
-                [(
-                    header::CONTENT_TYPE,
-                    HeaderValue::from_static(mime::APPLICATION_JSON.as_ref()),
-                )],
-                [(
-                    header::ALLOW,
-                    self.allow.as_str(),
-                )],
-                [("OData-Version", "4.0")],
-                [("Cache-Control", "no-cache")],
-                buf.into_inner().freeze(),
-            )
-                .into_response(),
+            Ok(()) => {
+                let mut response = (
+                    [(
+                        header::CONTENT_TYPE,
+                        HeaderValue::from_static(mime::APPLICATION_JSON.as_ref()),
+                    )],
+                    [(
+                        header::ALLOW,
+                        self.allow.as_str(),
+                    )],
+                    [("OData-Version", "4.0")],
+                    [("Cache-Control", "no-cache")],
+                    buf.into_inner().freeze(),
+                ).into_response();
+                if self.described_by.is_some() {
+                    let headers = response.headers_mut();
+                    let link = format!("<{}>; rel=describedby", self.described_by.unwrap());
+                    headers.append(header::LINK, HeaderValue::from_str(link.as_str()).expect("FIXME"));
+                }
+                response
+            },
             Err(err) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 [(
@@ -42,8 +61,7 @@ where
                 )],
                 [("Cache-Control", "no-cache")],
                 err.to_string(),
-            )
-                .into_response(),
+            ).into_response(),
         }
     }
 }

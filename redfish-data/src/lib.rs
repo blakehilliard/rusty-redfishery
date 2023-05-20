@@ -54,7 +54,7 @@ impl RedfishResourceType {
     pub fn new_dmtf(name: String, version: RedfishResourceSchemaVersion) -> Self {
         Self {
             xml_schema_uri: format!("http://redfish.dmtf.org/schemas/v1/{}_v{}.xml", name, version.major),
-            described_by: format!("http://redfish.dmtf.org/schemas/v1/{}.{}.json", name, version.to_str()),
+            described_by: format!("https://redfish.dmtf.org/schemas/v1/{}.{}.json", name, version.to_str()),
             name,
             version,
         }
@@ -82,7 +82,7 @@ impl RedfishCollectionType {
     pub fn new_dmtf(name: String, version: RedfishCollectionSchemaVersion) -> Self {
         Self {
             xml_schema_uri: format!("http://redfish.dmtf.org/schemas/v1/{}_{}.xml", name, version.to_str()),
-            described_by: format!("http://redfish.dmtf.org/schemas/v1/{}.json", name),
+            described_by: format!("https://redfish.dmtf.org/schemas/v1/{}.json", name),
             name,
             version,
         }

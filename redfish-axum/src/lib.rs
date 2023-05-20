@@ -20,7 +20,7 @@ use redfish_data::{
 };
 
 mod json;
-use json::JsonGetResponse;
+use json::JsonResponse;
 
 pub trait RedfishNode {
     fn get_uri(&self) -> &str;
@@ -93,10 +93,11 @@ async fn getter(
     let uri = "/redfish/".to_owned() + &path;
     let tree = state.tree.lock().unwrap();
     match tree.get(uri.as_str()) {
-        Some(node) => JsonGetResponse {
-            data: node.get_body(),
-            allow: node_to_allow(node),
-        }.into_response(),
+        Some(node) => JsonResponse::new(
+            node.get_body(),
+            node_to_allow(node),
+            node.described_by(),
+        ).into_response(),
         _ => StatusCode::NOT_FOUND.into_response()
     }
 }
@@ -153,6 +154,7 @@ async fn poster(
     }
 
     let mut tree = state.tree.lock().unwrap();
+    // FIXME: Do I need to set described_by here???
     if let Ok(node) = tree.create(uri.as_str(), payload) {
         return (
             StatusCode::CREATED,
@@ -191,10 +193,11 @@ async fn patcher(
     let uri = "/redfish/".to_owned() + &path;
     let mut tree = state.tree.lock().unwrap();
     match tree.patch(uri.as_str(), payload) {
-        Ok(node) => JsonGetResponse {
-            data: node.get_body(),
-            allow: node_to_allow(node),
-        }.into_response(),
+        Ok(node) => JsonResponse::new(
+            node.get_body(),
+            node_to_allow(node),
+            node.described_by(),
+        ).into_response(),
         Err(_) => {
             match tree.get(uri.as_str()) {
                 Some(node) => (
@@ -214,10 +217,11 @@ async fn get_redfish(headers: HeaderMap) -> Response {
             return bad_odata_version_response();
         }
     }
-    JsonGetResponse {
-        data: json!({ "v1": "/redfish/v1/" }),
-        allow: String::from("GET,HEAD"),
-    }.into_response()
+    JsonResponse::new(
+        json!({ "v1": "/redfish/v1/" }),
+        String::from("GET,HEAD"),
+        None,
+    ).into_response()
 }
 
 async fn get_odata_metadata_doc(
@@ -245,10 +249,11 @@ async fn get_odata_service_doc(
 ) -> Response {
     let tree = state.tree.lock().unwrap();
     let service_root = tree.get("/redfish/v1");
-    JsonGetResponse {
-        data: get_odata_service_document(service_root.unwrap().get_body().as_object().unwrap()),
-        allow: String::from("GET,HEAD"),
-    }.into_response()
+    JsonResponse::new(
+        get_odata_service_document(service_root.unwrap().get_body().as_object().unwrap()),
+        String::from("GET,HEAD"),
+        None,
+    ).into_response()
 }
 
 fn node_to_allow(node: &dyn RedfishNode) -> String {
