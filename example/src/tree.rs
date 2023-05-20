@@ -8,17 +8,15 @@ use redfish_data::{
     RedfishCollectionType,
     RedfishResourceType,
     RedfishSchemaVersion,
-    RedfishCollectionSchemaVersion,
     RedfishResourceSchemaVersion,
     get_uri_id,
 };
 
 pub struct RedfishCollection {
     uri: String,
-    resource_type: String, //FIXME: name conflicts with RedfishResourceType
-    schema_version: RedfishCollectionSchemaVersion,
+    resource_type: RedfishCollectionType,
     name: String,
-    pub members: Vec<String>,
+    pub members: Vec<String>, // TODO: Make private, use method to access instead
     // if user should not be able to POST to collection, this should be None
     // else, it should be a function that returns new RedfishResource generated from Request
     // that function should *not* add the resource to the collection's members vector.
@@ -27,14 +25,15 @@ pub struct RedfishCollection {
 
 impl RedfishCollection {
     pub fn new(
-        uri: &str, resource_type: String, name: String,
+        uri: &str,
+        schema_name: String,
+        name: String,
         members: Vec<String>,
         post: Option<fn(&RedfishCollection, serde_json::Value) -> Result<RedfishResource, ()>>,
     ) -> Self {
         Self {
             uri: String::from(uri),
-            resource_type,
-            schema_version: RedfishCollectionSchemaVersion::new(1),
+            resource_type: RedfishCollectionType::new_dmtf_v1(schema_name),
             name,
             members,
             post,
@@ -56,7 +55,7 @@ impl RedfishNode for RedfishCollection {
         }
         json!({
             "@odata.id": self.uri,
-            "@odata.type": format!("#{}.{}", self.resource_type, self.resource_type),
+            "@odata.type": format!("#{}.{}", self.resource_type.name, self.resource_type.name),
             "Name": self.name,
             "Members": member_list,
             "Members@odata.count": self.members.len(),
@@ -68,12 +67,15 @@ impl RedfishNode for RedfishCollection {
     fn can_patch(&self) -> bool { false }
 
     fn can_post(&self) -> bool { self.post.is_some() }
+
+    fn described_by(&self) -> Option<&str> {
+        Some(self.resource_type.described_by.as_str())
+    }
 }
 
 pub struct RedfishResource {
     uri: String, //TODO: Enforce things here? Does DMTF recommend trailing slash or no?
-    resource_type: String, // FIXME: Name conflicts with RedfishResourceType ?
-    schema_version: RedfishResourceSchemaVersion,
+    resource_type: RedfishResourceType,
     body: Map<String, Value>,
     deletable: bool,
     patchable: bool,
@@ -83,7 +85,7 @@ pub struct RedfishResource {
 impl RedfishResource {
     pub fn new(
         uri: &str,
-        resource_type: String,
+        schema_name: String,
         schema_version: RedfishResourceSchemaVersion,
         term_name: String,
         name: String,
@@ -94,12 +96,13 @@ impl RedfishResource {
     ) -> Self {
         let mut body = rest.as_object().unwrap().clone();
         body.insert(String::from("@odata.id"), json!(uri));
-        body.insert(String::from("@odata.type"), json!(format!("#{}.{}.{}", resource_type, schema_version.to_str(), term_name)));
+        body.insert(String::from("@odata.type"), json!(format!("#{}.{}.{}", schema_name, schema_version.to_str(), term_name)));
         let id = get_uri_id(uri);
         body.insert(String::from("Id"), json!(id));
         body.insert(String::from("Name"), json!(name));
+        let resource_type = RedfishResourceType::new_dmtf(schema_name, schema_version);
         Self {
-            uri: String::from(uri), resource_type, schema_version, body, deletable, patchable, collection,
+            uri: String::from(uri), resource_type, body, deletable, patchable, collection,
         }
     }
 }
@@ -118,6 +121,10 @@ impl RedfishNode for RedfishResource {
     fn can_patch(&self) -> bool { self.patchable }
 
     fn can_post(&self) -> bool { false }
+
+    fn described_by(&self) -> Option<&str> {
+        Some(self.resource_type.described_by.as_str())
+    }
 }
 
 pub struct MockTree {
@@ -138,27 +145,19 @@ impl MockTree {
     }
 
     pub fn add_resource(&mut self, resource: RedfishResource) {
-        let resource_type_name = resource.resource_type.clone();
-        let schema_version = resource.schema_version.clone();
+        let resource_type = resource.resource_type.clone();
         self.resources.insert(resource.uri.clone(), resource);
-        for resource_type in self.resource_types.iter() {
-            if resource_type.name == resource_type_name && resource_type.version == schema_version {
-                return;
-            }
+        if ! self.resource_types.contains(&resource_type) {
+            self.resource_types.push(resource_type);
         }
-        self.resource_types.push(RedfishResourceType::new_dmtf(resource_type_name, schema_version));
     }
 
     pub fn add_collection(&mut self, collection: RedfishCollection) {
-        let collection_type_name = collection.resource_type.clone();
-        let schema_version = collection.schema_version.clone();
+        let collection_type = collection.resource_type.clone();
         self.collections.insert(collection.uri.clone(), collection);
-        for collection_type in self.collection_types.iter() {
-            if collection_type.name == collection_type_name && collection_type.version == schema_version {
-                return;
-            }
+        if ! self.collection_types.contains(&collection_type) {
+            self.collection_types.push(collection_type);
         }
-        self.collection_types.push(RedfishCollectionType::new_dmtf(collection_type_name, schema_version));
     }
 }
 

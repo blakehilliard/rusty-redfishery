@@ -41,6 +41,7 @@ impl RedfishSchemaVersion for RedfishCollectionSchemaVersion {
     }
 }
 
+#[derive(Clone, PartialEq)]
 pub struct RedfishResourceType {
     pub name: String,
     pub version: RedfishResourceSchemaVersion,
@@ -69,6 +70,7 @@ impl RedfishResourceType {
     }
 }
 
+#[derive(Clone, PartialEq)]
 pub struct RedfishCollectionType {
     pub name: String,
     pub version: RedfishCollectionSchemaVersion,

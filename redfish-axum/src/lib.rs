@@ -28,6 +28,7 @@ pub trait RedfishNode {
     fn can_post(&self) -> bool;
     fn can_delete(&self) -> bool;
     fn can_patch(&self) -> bool;
+    fn described_by(&self) -> Option<&str>; // TODO: Stricter type???
 }
 
 // TODO: Should all these methods be async?
