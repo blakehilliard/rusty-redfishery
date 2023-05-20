@@ -22,6 +22,7 @@ use redfish_data::{
 mod json;
 use json::JsonResponse;
 
+// TODO: Is this a better fit for redfish-data?
 // TODO: This is nice for straight-forward cases, but how will I allow any custom error response?
 #[derive(Debug)]
 pub enum RedfishErr {
@@ -46,15 +47,15 @@ pub trait RedfishTree {
     // Create a resource, given the collction URI and JSON input.
     // Return Ok(RedfishNode) of the new resource, or Err.
     // TODO: Properly handle various error cases.
-    fn create(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, ()>;
+    fn create(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, RedfishErr>;
 
     // Delete a resource, given its URI.
     // Return Ok after it has been deleted, or Error if it cannot be deleted.
-    fn delete(&mut self, uri: &str) -> Result<(), ()>;
+    fn delete(&mut self, uri: &str) -> Result<(), ()>; // FIXME: RedfishErr
 
     // Patch a resource.
     // Return the patched resource on success, or Error.
-    fn patch(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, ()>;
+    fn patch(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, ()>; // FIXME: RedfishErr
 
     fn get_collection_types(&self) -> &[RedfishCollectionType];
 
@@ -167,21 +168,24 @@ async fn poster(
     }
 
     let mut tree = state.tree.lock().unwrap();
-    if let Ok(node) = tree.create(uri.as_str(), payload) {
-        return get_node_created_response(node);
-    }
-    match tree.get(uri.as_str()) {
-        Ok(node) => (
-            StatusCode::METHOD_NOT_ALLOWED,
-            [(header::ALLOW, node_to_allow(node))],
-            [("OData-Version", "4.0")],
-            [("Cache-Control", "no-cache")],
-        ).into_response(),
-        _ => (
-            StatusCode::NOT_FOUND,
-            [("OData-Version", "4.0")],
-            [("Cache-Control", "no-cache")],
-        ).into_response(),
+    match tree.create(uri.as_str(), payload) {
+        Ok(node) => get_node_created_response(node),
+        Err(error) => match error {
+            RedfishErr::Unauthorized => get_error_response(error),
+            _ => match tree.get(uri.as_str()) {
+                Ok(node) => (
+                    StatusCode::METHOD_NOT_ALLOWED,
+                    [(header::ALLOW, node_to_allow(node))],
+                    [("OData-Version", "4.0")],
+                    [("Cache-Control", "no-cache")],
+                ).into_response(),
+                _ => (
+                    StatusCode::NOT_FOUND,
+                    [("OData-Version", "4.0")],
+                    [("Cache-Control", "no-cache")],
+                ).into_response(),
+            }
+        }
     }
 }
 

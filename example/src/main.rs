@@ -4,7 +4,7 @@ use axum::{
 };
 use tower_http::normalize_path::{NormalizePath};
 use serde_json::json;
-use redfish_axum::RedfishNode;
+use redfish_axum::{RedfishNode, RedfishErr};
 use redfish_data::{
     RedfishResourceSchemaVersion,
     get_uri_id,
@@ -13,7 +13,7 @@ use redfish_data::{
 mod tree;
 use tree::{MockTree, RedfishCollection, RedfishResource};
 
-fn create_session(collection: &RedfishCollection, req: serde_json::Value) -> Result<RedfishResource, ()> {
+fn create_session(collection: &RedfishCollection, req: serde_json::Value) -> Result<RedfishResource, RedfishErr> {
     // Look at existing members to see next Id to pick
     let mut highest = 0;
     for member in collection.members.iter() {

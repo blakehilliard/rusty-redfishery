@@ -20,7 +20,7 @@ pub struct RedfishCollection {
     // if user should not be able to POST to collection, this should be None
     // else, it should be a function that returns new RedfishResource generated from Request
     // that function should *not* add the resource to the collection's members vector.
-    post: Option<fn(&RedfishCollection, serde_json::Value) -> Result<RedfishResource, ()>>,
+    post: Option<fn(&RedfishCollection, serde_json::Value) -> Result<RedfishResource, RedfishErr>>,
 }
 
 impl RedfishCollection {
@@ -29,7 +29,7 @@ impl RedfishCollection {
         schema_name: String,
         name: String,
         members: Vec<String>,
-        post: Option<fn(&RedfishCollection, serde_json::Value) -> Result<RedfishResource, ()>>,
+        post: Option<fn(&RedfishCollection, serde_json::Value) -> Result<RedfishResource, RedfishErr>>,
     ) -> Self {
         Self {
             uri: String::from(uri),
@@ -172,14 +172,14 @@ impl RedfishTree for MockTree {
         Err(RedfishErr::NotFound)
     }
 
-    fn create(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, ()> {
+    fn create(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, RedfishErr> {
         let collection = self.collections.get_mut(uri);
         if collection.is_none() {
-            return Err(());
+            return Err(RedfishErr::NotFound);
         }
         let collection = collection.unwrap();
         match collection.post {
-            None => Err(()),
+            None => Err(RedfishErr::NotFound), // FIXME: Better error
             Some(post) => {
                 let member = post(collection, req)?;
                 let member_uri = member.uri.clone();
@@ -187,10 +187,7 @@ impl RedfishTree for MockTree {
                 // Update members of collection.
                 collection.members.push(member_uri.clone());
                 // Return new resource.
-                match self.get(member_uri.as_str()) {
-                    Ok(resource) => Ok(resource),
-                    Err(_) => Err(())
-                }
+                self.get(member_uri.as_str())
             }
         }
     }
