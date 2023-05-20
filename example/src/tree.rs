@@ -7,6 +7,7 @@ use redfish_axum::{
 use redfish_data::{
     RedfishCollectionType,
     RedfishResourceType,
+    RedfishSchemaVersion,
     RedfishCollectionSchemaVersion,
     RedfishResourceSchemaVersion,
     get_uri_id,

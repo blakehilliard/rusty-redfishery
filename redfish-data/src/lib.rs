@@ -1,6 +1,10 @@
 use serde::Serialize;
 use serde_json::{Value, json, Map};
 
+pub trait RedfishSchemaVersion {
+    fn to_str(&self) -> String;
+}
+
 #[derive(Clone, PartialEq)]
 pub struct RedfishResourceSchemaVersion {
     major: u32,
@@ -12,8 +16,10 @@ impl RedfishResourceSchemaVersion {
     pub fn new(major: u32, minor: u32, build: u32) -> Self {
         Self { major, minor, build }
     }
+}
 
-    pub fn to_str(&self) -> String {
+impl RedfishSchemaVersion for RedfishResourceSchemaVersion {
+    fn to_str(&self) -> String {
         format!("v{}_{}_{}", self.major, self.minor, self.build)
     }
 }
@@ -27,8 +33,10 @@ impl RedfishCollectionSchemaVersion {
     pub fn new(version: u32) -> Self {
         Self { version }
     }
+}
 
-    pub fn to_str(&self) -> String {
+impl RedfishSchemaVersion for RedfishCollectionSchemaVersion {
+    fn to_str(&self) -> String {
         format!("v{}", self.version)
     }
 }
@@ -37,6 +45,7 @@ pub struct RedfishResourceType {
     pub name: String,
     pub version: RedfishResourceSchemaVersion,
     pub xml_schema_uri: String,
+    pub described_by: String,
 }
 
 impl RedfishResourceType {
@@ -44,14 +53,14 @@ impl RedfishResourceType {
     pub fn new_dmtf(name: String, version: RedfishResourceSchemaVersion) -> Self {
         Self {
             xml_schema_uri: format!("http://redfish.dmtf.org/schemas/v1/{}_v{}.xml", name, version.major),
+            described_by: format!("http://redfish.dmtf.org/schemas/v1/{}.{}.json", name, version.to_str()),
             name,
             version,
         }
     }
 
-    // TODO: This should be more commonized
-    pub fn get_versioned_name(&self) -> String {
-        format!("{}.{}", self.name, self.version.to_str())
+    fn get_versioned_name(&self) -> String {
+        get_versioned_name(&self.name, &self.version)
     }
 
     pub fn to_xml(&self) -> String {
@@ -151,6 +160,10 @@ pub fn get_uri_id(uri: &str) -> String {
         "/redfish/v1" => String::from("RootService"),
         _ => String::from(std::path::Path::new(uri).file_name().unwrap().to_str().unwrap()),
     }
+}
+
+pub fn get_versioned_name(name: &str, version: &dyn RedfishSchemaVersion) -> String {
+    format!("{}.{}", name, version.to_str())
 }
 
 #[cfg(test)]
