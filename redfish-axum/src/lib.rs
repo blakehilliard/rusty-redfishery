@@ -12,7 +12,7 @@ use axum::{
 use tower_http::normalize_path::{NormalizePath, NormalizePathLayer};
 use tower::layer::Layer;
 use serde_json::{json};
-use http::{header, HeaderMap};
+use http::{header::{self}, HeaderMap, HeaderValue, HeaderName};
 use redfish_data::{
     RedfishCollectionType,
     RedfishResourceType,
@@ -93,11 +93,7 @@ async fn getter(
     let uri = "/redfish/".to_owned() + &path;
     let tree = state.tree.lock().unwrap();
     match tree.get(uri.as_str()) {
-        Some(node) => JsonResponse::new(
-            node.get_body(),
-            node_to_allow(node),
-            get_describedby_header_value(node),
-        ).into_response(),
+        Some(node) => get_node_get_response(node),
         _ => StatusCode::NOT_FOUND.into_response()
     }
 }
@@ -154,15 +150,8 @@ async fn poster(
     }
 
     let mut tree = state.tree.lock().unwrap();
-    // FIXME: Do I need to set described_by here???
     if let Ok(node) = tree.create(uri.as_str(), payload) {
-        return (
-            StatusCode::CREATED,
-            [(header::LOCATION, node.get_uri())],
-            [("OData-Version", "4.0")],
-            [("Cache-Control", "no-cache")],
-            Json(node.get_body()),
-        ).into_response();
+        return get_node_created_response(node);
     }
     match tree.get(uri.as_str()) {
         Some(node) => (
@@ -193,11 +182,7 @@ async fn patcher(
     let uri = "/redfish/".to_owned() + &path;
     let mut tree = state.tree.lock().unwrap();
     match tree.patch(uri.as_str(), payload) {
-        Ok(node) => JsonResponse::new(
-            node.get_body(),
-            node_to_allow(node),
-            get_describedby_header_value(node),
-        ).into_response(),
+        Ok(node) => get_node_get_response(node),
         Err(_) => {
             match tree.get(uri.as_str()) {
                 Some(node) => (
@@ -217,10 +202,10 @@ async fn get_redfish(headers: HeaderMap) -> Response {
             return bad_odata_version_response();
         }
     }
-    JsonResponse::new(
+    get_non_node_json_response(
+        StatusCode::OK,
         json!({ "v1": "/redfish/v1/" }),
-        String::from("GET,HEAD"),
-        None,
+        "GET,HEAD",
     ).into_response()
 }
 
@@ -249,10 +234,10 @@ async fn get_odata_service_doc(
 ) -> Response {
     let tree = state.tree.lock().unwrap();
     let service_root = tree.get("/redfish/v1");
-    JsonResponse::new(
+    get_non_node_json_response(
+        StatusCode::OK,
         get_odata_service_document(service_root.unwrap().get_body().as_object().unwrap()),
-        String::from("GET,HEAD"),
-        None,
+        "GET,HEAD",
     ).into_response()
 }
 
@@ -278,6 +263,47 @@ fn bad_odata_version_response() -> Response {
     ).into_response()
 }
 
-fn get_describedby_header_value(node: &dyn RedfishNode) -> Option<String> {
-    Some(format!("<{}>; rel=describedby", node.described_by()?))
+fn add_described_by_header(headers: &mut HeaderMap, node: &dyn RedfishNode) -> () {
+    if let Some(described_by) = node.described_by() {
+        let val = format!("<{}>; rel=describedby", described_by);
+        let val = HeaderValue::from_str(val.as_str()).expect("FIXME");
+        headers.insert(header::LINK, val);
+    }
+}
+
+fn get_node_get_response(node: &dyn RedfishNode) -> Response {
+    let mut headers = get_standard_headers(node_to_allow(node).as_str());
+    add_described_by_header(&mut headers, node);
+    JsonResponse::new(
+        StatusCode::OK,
+        headers,
+        node.get_body(),
+    ).into_response()
+}
+
+fn get_node_created_response(node: &dyn RedfishNode) -> Response {
+    let mut headers = get_standard_headers(node_to_allow(node).as_str());
+    add_described_by_header(&mut headers, node);
+    headers.insert(header::LOCATION, HeaderValue::from_str(node.get_uri()).expect("FIXME"));
+    JsonResponse::new(
+        StatusCode::CREATED,
+        headers,
+        node.get_body(),
+    ).into_response()
+}
+
+fn get_non_node_json_response(status: StatusCode, data: serde_json::Value, allow: &str) -> Response {
+    JsonResponse::new(
+        status,
+        get_standard_headers(allow),
+        data,
+    ).into_response()
+}
+
+fn get_standard_headers(allow: &str) -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    headers.insert(header::ALLOW, HeaderValue::from_str(allow).expect("FIXME"));
+    headers.insert(HeaderName::from_static("odata-version"), HeaderValue::from_static("4.0"));
+    headers.insert(HeaderName::from_static("cache-control"), HeaderValue::from_static("no-cache"));
+    headers
 }
