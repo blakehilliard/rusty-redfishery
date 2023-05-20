@@ -1,10 +1,9 @@
-use bytes::{BufMut, BytesMut};
 use http::{
-    header::{self, HeaderValue},
+    header::{self, HeaderValue}, HeaderName,
 };
 use axum::{
     http::StatusCode,
-    response::{Response, IntoResponse},
+    response::{Response, IntoResponse, Json},
 };
 use serde_json::Value;
 
@@ -25,35 +24,14 @@ impl JsonResponse {
 impl IntoResponse for JsonResponse
 {
     fn into_response(self) -> Response {
-        let mut buf = BytesMut::with_capacity(128).writer();
-
-        match serde_json::to_writer(&mut buf, &self.data) {
-            Ok(()) => {
-                let mut response = (
-                    [(
-                        header::CONTENT_TYPE,
-                        HeaderValue::from_static(mime::APPLICATION_JSON.as_ref()),
-                    )],
-                    [(header::ALLOW, self.allow.as_str())],
-                    [("OData-Version", "4.0")],
-                    [("Cache-Control", "no-cache")],
-                    buf.into_inner().freeze(),
-                ).into_response();
-                if self.described_by.is_some() {
-                    let headers = response.headers_mut();
-                    headers.append(header::LINK, HeaderValue::from_str(self.described_by.unwrap().as_str()).expect("FIXME"));
-                }
-                response
-            },
-            Err(err) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                [(
-                    header::CONTENT_TYPE,
-                    HeaderValue::from_static(mime::TEXT_PLAIN_UTF_8.as_ref()),
-                )],
-                [("Cache-Control", "no-cache")],
-                err.to_string(),
-            ).into_response(),
+        let mut response = Json(self.data).into_response();
+        let headers = response.headers_mut();
+        headers.insert(header::ALLOW, HeaderValue::from_str(self.allow.as_str()).expect("FIXME"));
+        headers.insert(HeaderName::from_static("odata-version"), HeaderValue::from_static("4.0"));
+        headers.insert(HeaderName::from_static("cache-control"), HeaderValue::from_static("no-cache"));
+        if self.described_by.is_some() {
+            headers.insert(header::LINK, HeaderValue::from_str(self.described_by.unwrap().as_str()).expect("FIXME"));
         }
+        response
     }
 }
