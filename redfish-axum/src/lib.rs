@@ -96,7 +96,7 @@ async fn getter(
         Some(node) => JsonResponse::new(
             node.get_body(),
             node_to_allow(node),
-            node.described_by(),
+            get_describedby_header_value(node),
         ).into_response(),
         _ => StatusCode::NOT_FOUND.into_response()
     }
@@ -196,7 +196,7 @@ async fn patcher(
         Ok(node) => JsonResponse::new(
             node.get_body(),
             node_to_allow(node),
-            node.described_by(),
+            get_describedby_header_value(node),
         ).into_response(),
         Err(_) => {
             match tree.get(uri.as_str()) {
@@ -276,4 +276,8 @@ fn bad_odata_version_response() -> Response {
         [("OData-Version", "4.0")],
         [("Cache-Control", "no-cache")],
     ).into_response()
+}
+
+fn get_describedby_header_value(node: &dyn RedfishNode) -> Option<String> {
+    Some(format!("<{}>; rel=describedby", node.described_by()?))
 }

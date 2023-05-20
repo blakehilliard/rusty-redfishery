@@ -17,11 +17,7 @@ pub struct JsonResponse {
 }
 
 impl JsonResponse {
-    pub fn new(data: Value, allow: String, described_by: Option<&str>) -> Self {
-        let described_by = match described_by {
-            None => None,
-            Some(x) => Some(String::from(x))
-        };
+    pub fn new(data: Value, allow: String, described_by: Option<String>) -> Self {
         Self { data, allow, described_by }
     }
 }
@@ -38,18 +34,14 @@ impl IntoResponse for JsonResponse
                         header::CONTENT_TYPE,
                         HeaderValue::from_static(mime::APPLICATION_JSON.as_ref()),
                     )],
-                    [(
-                        header::ALLOW,
-                        self.allow.as_str(),
-                    )],
+                    [(header::ALLOW, self.allow.as_str())],
                     [("OData-Version", "4.0")],
                     [("Cache-Control", "no-cache")],
                     buf.into_inner().freeze(),
                 ).into_response();
                 if self.described_by.is_some() {
                     let headers = response.headers_mut();
-                    let link = format!("<{}>; rel=describedby", self.described_by.unwrap());
-                    headers.append(header::LINK, HeaderValue::from_str(link.as_str()).expect("FIXME"));
+                    headers.append(header::LINK, HeaderValue::from_str(self.described_by.unwrap().as_str()).expect("FIXME"));
                 }
                 response
             },
