@@ -73,12 +73,14 @@ pub struct RedfishCollectionType {
     pub name: String,
     pub version: RedfishCollectionSchemaVersion,
     pub xml_schema_uri: String,
+    pub described_by: String,
 }
 
 impl RedfishCollectionType {
     pub fn new_dmtf(name: String, version: RedfishCollectionSchemaVersion) -> Self {
         Self {
             xml_schema_uri: format!("http://redfish.dmtf.org/schemas/v1/{}_{}.xml", name, version.to_str()),
+            described_by: format!("http://redfish.dmtf.org/schemas/v1/{}.json", name),
             name,
             version,
         }
