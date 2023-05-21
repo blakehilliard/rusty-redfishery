@@ -88,7 +88,7 @@ pub fn app<T: RedfishTree + Send + Sync + 'static>(tree: T) -> NormalizePath<Rou
 #[derive(Clone)]
 struct AppState {
     tree: Arc<Mutex<dyn RedfishTree + Send>>,
-    sessions: HashMap<Uuid, String>,
+    sessions: HashMap<String, String>,
 }
 
 async fn getter(
@@ -164,8 +164,8 @@ async fn poster(
             // TODO: Would it be better to inspect node to see if it's a Session?
             if uri == "/redfish/v1/SessionService/Sessions" {
                 let token = Uuid::new_v4();
-                state.sessions.insert(token, String::from(node.get_uri()));
                 let token = token.as_simple().to_string();
+                state.sessions.insert(token.clone(), String::from(node.get_uri()));
                 let header_val = HeaderValue::from_str(token.as_str()).expect("FIXME");
                 additional_headers.insert("x-auth-token", header_val);
             }
