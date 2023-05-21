@@ -261,7 +261,7 @@ mod tests {
     }
 
     async fn get_response_json(response: Response) -> Value {
-        assert_eq!(response.headers().get("content-type").unwrap().to_str().unwrap(), "application/json");
+        assert_eq!(get_header(&response, "content-type"), "application/json");
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         serde_json::from_slice(&body).unwrap()
     }
@@ -269,13 +269,31 @@ mod tests {
     async fn jget(app: &mut NormalizePath<Router>, uri: &str, status_code: StatusCode, allow: &str, schema_url: Option<&str>) -> Value {
         let response = get(app, uri).await;
         assert_eq!(response.status(), status_code);
-        assert_eq!(response.headers().get("OData-Version").unwrap().to_str().unwrap(), "4.0");
-        assert_eq!(response.headers().get("allow").unwrap().to_str().unwrap(), allow);
-        assert_eq!(response.headers().get("cache-control").unwrap().to_str().unwrap(), "no-cache");
+        assert_eq!(get_header(&response, "OData-Version"), "4.0");
+        assert_eq!(get_header(&response, "allow"), allow);
+        assert_eq!(get_header(&response, "cache-control"), "no-cache");
         if schema_url.is_some() {
-            assert_eq!(response.headers().get("Link").unwrap().to_str().unwrap(), format!("<{}>; rel=describedby", schema_url.unwrap()));
+            assert_eq!(get_header(&response, "Link"), format!("<{}>; rel=describedby", schema_url.unwrap()));
         }
         get_response_json(response).await
+    }
+
+    fn get_header<'a>(response: &'a Response, key: &str) -> &'a str {
+        response.headers().get(key).unwrap().to_str().unwrap()
+    }
+
+    async fn login(app: &mut NormalizePath<Router>) -> (String, String) {
+        let data = json!({"UserName": "Obiwan", "Password": "n/a"});
+        let response = post(app, "/redfish/v1/SessionService/Sessions", data).await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        assert_eq!(get_header(&response, "OData-Version"), "4.0");
+        assert_eq!(get_header(&response, "Location"), "/redfish/v1/SessionService/Sessions/2");
+        assert_eq!(get_header(&response, "cache-control"), "no-cache");
+        assert_eq!(get_header(&response, "Link"), "<https://redfish.dmtf.org/schemas/v1/Session.v1_6_0.json>; rel=describedby");
+        (
+            get_header(&response, "X-Auth-Token").to_string(),
+            get_header(&response, "Location").to_string(),
+        )
     }
 
     async fn delete(app: &mut NormalizePath<Router>, uri: &str) -> Response {
@@ -308,10 +326,10 @@ mod tests {
         let req = Request::head("/redfish/v1").body(Body::empty()).unwrap();
         let response = app.ready().await.unwrap().call(req).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
-        assert_eq!(response.headers().get("content-type").unwrap().to_str().unwrap(), "application/json");
-        assert_eq!(response.headers().get("OData-Version").unwrap().to_str().unwrap(), "4.0");
-        assert_eq!(response.headers().get("cache-control").unwrap().to_str().unwrap(), "no-cache");
-        assert_eq!(response.headers().get("Link").unwrap().to_str().unwrap(), "<https://redfish.dmtf.org/schemas/v1/ServiceRoot.v1_15_0.json>; rel=describedby");
+        assert_eq!(get_header(&response, "content-type"), "application/json");
+        assert_eq!(get_header(&response, "OData-Version"), "4.0");
+        assert_eq!(get_header(&response, "cache-control"), "no-cache");
+        assert_eq!(get_header(&response, "Link"), "<https://redfish.dmtf.org/schemas/v1/ServiceRoot.v1_15_0.json>; rel=describedby");
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         assert_eq!(body, "");
     }
@@ -371,9 +389,9 @@ mod tests {
         let mut app = app();
         let response = get(&mut app, "/redfish/v1/$metadata").await;
         assert_eq!(response.status(), StatusCode::OK);
-        assert_eq!(response.headers().get("OData-Version").unwrap().to_str().unwrap(), "4.0");
-        assert_eq!(response.headers().get("allow").unwrap().to_str().unwrap(), "GET,HEAD");
-        assert_eq!(response.headers().get("content-type").unwrap().to_str().unwrap(), "application/xml");
+        assert_eq!(get_header(&response, "OData-Version"), "4.0");
+        assert_eq!(get_header(&response, "allow"), "GET,HEAD");
+        assert_eq!(get_header(&response, "content-type"), "application/xml");
 
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         let body = std::str::from_utf8(&body).unwrap();
@@ -422,9 +440,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn missing_token() {
+        let mut app = app();
+        let response = get(&mut app, "/redfish/v1/SessionService").await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        let body = std::str::from_utf8(&body).unwrap();
+        assert_eq!(body, "");
+    }
+
+    // FIXME: use token for everything now!
+    #[tokio::test]
     async fn session_service() {
         let mut app = app();
-        let body = jget(&mut app, "/redfish/v1/SessionService/", StatusCode::OK, "GET,HEAD,PATCH", Some("https://redfish.dmtf.org/schemas/v1/SessionService.v1_1_9.json")).await;
+        let (token, _) = login(&mut app).await;
+        let body = jget(
+            &mut app, "/redfish/v1/SessionService/", StatusCode::OK,
+            "GET,HEAD,PATCH",
+            Some("https://redfish.dmtf.org/schemas/v1/SessionService.v1_1_9.json"),
+            //Some(token),
+        ).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService",
             "@odata.type": "#SessionService.v1_1_9.SessionService",
@@ -514,7 +549,7 @@ mod tests {
         let mut app = app();
         let response = delete(&mut app, "/redfish/v1").await;
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
-        assert_eq!(response.headers().get("allow").unwrap().to_str().unwrap(), "GET,HEAD");
+        assert_eq!(get_header(&response, "allow"), "GET,HEAD");
     }
 
     #[tokio::test]
@@ -523,7 +558,7 @@ mod tests {
         let data = json!({});
         let response = post(&mut app, "/redfish/v1", data).await;
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
-        assert_eq!(response.headers().get("allow").unwrap().to_str().unwrap(), "GET,HEAD");
+        assert_eq!(get_header(&response, "allow"), "GET,HEAD");
     }
 
     #[tokio::test]
@@ -532,7 +567,7 @@ mod tests {
         let data = json!({});
         let response = patch(&mut app, "/redfish/v1", data).await;
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
-        assert_eq!(response.headers().get("allow").unwrap().to_str().unwrap(), "GET,HEAD");
+        assert_eq!(get_header(&response, "allow"), "GET,HEAD");
     }
 
     #[tokio::test]
@@ -541,9 +576,9 @@ mod tests {
         let data = json!({"SessionTimeout": 300});
         let response = patch(&mut app, "/redfish/v1/SessionService", data).await;
         assert_eq!(response.status(), StatusCode::OK);
-        assert_eq!(response.headers().get("allow").unwrap().to_str().unwrap(), "GET,HEAD,PATCH");
-        assert_eq!(response.headers().get("cache-control").unwrap().to_str().unwrap(), "no-cache");
-        assert_eq!(response.headers().get("Link").unwrap().to_str().unwrap(), "<https://redfish.dmtf.org/schemas/v1/SessionService.v1_1_9.json>; rel=describedby");
+        assert_eq!(get_header(&response, "allow"), "GET,HEAD,PATCH");
+        assert_eq!(get_header(&response, "cache-control"), "no-cache");
+        assert_eq!(get_header(&response, "Link"), "<https://redfish.dmtf.org/schemas/v1/SessionService.v1_1_9.json>; rel=describedby");
 
         let body = get_response_json(response).await;
         assert_eq!(body, json!({
@@ -574,10 +609,10 @@ mod tests {
         let data = json!({"UserName": "Obiwan", "Password": "n/a"});
         let response = post(&mut app, "/redfish/v1/SessionService/Sessions", data).await;
         assert_eq!(response.status(), StatusCode::CREATED);
-        assert_eq!(response.headers().get("OData-Version").unwrap().to_str().unwrap(), "4.0");
-        assert_eq!(response.headers().get("Location").unwrap().to_str().unwrap(), "/redfish/v1/SessionService/Sessions/2");
-        assert_eq!(response.headers().get("cache-control").unwrap().to_str().unwrap(), "no-cache");
-        assert_eq!(response.headers().get("Link").unwrap().to_str().unwrap(), "<https://redfish.dmtf.org/schemas/v1/Session.v1_6_0.json>; rel=describedby");
+        assert_eq!(get_header(&response, "OData-Version"), "4.0");
+        assert_eq!(get_header(&response, "Location"), "/redfish/v1/SessionService/Sessions/2");
+        assert_eq!(get_header(&response, "cache-control"), "no-cache");
+        assert_eq!(get_header(&response, "Link"), "<https://redfish.dmtf.org/schemas/v1/Session.v1_6_0.json>; rel=describedby");
         assert_eq!(response.headers().get("X-Auth-Token").is_some(), true);
 
         let body = get_response_json(response).await;
@@ -657,8 +692,8 @@ mod tests {
         let data = json!({"UserName": "Obiwan", "Password": "n/a"});
         let response = post(&mut app, "/redfish/v1/SessionService/Sessions/Members", data).await;
         assert_eq!(response.status(), StatusCode::CREATED);
-        assert_eq!(response.headers().get("OData-Version").unwrap().to_str().unwrap(), "4.0");
-        assert_eq!(response.headers().get("Location").unwrap().to_str().unwrap(), "/redfish/v1/SessionService/Sessions/2");
+        assert_eq!(get_header(&response, "OData-Version"), "4.0");
+        assert_eq!(get_header(&response, "Location"), "/redfish/v1/SessionService/Sessions/2");
     }
 
     #[tokio::test]
