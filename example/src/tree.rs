@@ -16,7 +16,7 @@ pub struct RedfishCollection {
     uri: String,
     resource_type: RedfishCollectionType,
     name: String,
-    pub members: Vec<String>, // TODO: Make private, use method to access instead
+    pub members: Vec<String>,
     // if user should not be able to POST to collection, this should be None
     // else, it should be a function that returns new RedfishResource generated from Request
     // that function should *not* add the resource to the collection's members vector.
