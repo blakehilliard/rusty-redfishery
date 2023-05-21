@@ -204,25 +204,27 @@ impl RedfishTree for MockTree {
     }
 
     fn delete(&mut self, uri: &str) -> Result<(), RedfishErr> {
-        let resource = self.resources.get(uri);
-        if resource.is_none() {
-            return Err(RedfishErr::NotFound);
-        }
-        let resource = resource.unwrap();
-        let allowed_methods = resource.get_allowed_methods();
-        if ! allowed_methods.delete {
-            return Err(RedfishErr::MethodNotAllowed(allowed_methods));
-        }
-        // FIXME: call delete() on resource
-        if let Some(collection_uri) = &resource.collection {
-            if let Some(collection) = self.collections.get_mut(collection_uri) {
-                if let Some(member_index) = collection.members.iter().position(|x| x == uri) {
-                    collection.members.remove(member_index);
+        match self.resources.get(uri) {
+            None => match self.collections.get(uri) {
+                Some(collection) => Err(RedfishErr::MethodNotAllowed(collection.get_allowed_methods())),
+                None => Err(RedfishErr::NotFound),
+            },
+            Some(resource) => match resource.delete {
+                None => Err(RedfishErr::MethodNotAllowed(resource.get_allowed_methods())),
+                Some(delete) => {
+                    delete(resource)?;
+                    if let Some(collection_uri) = &resource.collection {
+                        if let Some(collection) = self.collections.get_mut(collection_uri) {
+                            if let Some(member_index) = collection.members.iter().position(|x| x == uri) {
+                                collection.members.remove(member_index);
+                            }
+                        }
+                    }
+                    self.resources.remove(uri);
+                    Ok(())
                 }
-            }
+            },
         }
-        self.resources.remove(uri);
-        return Ok(());
     }
 
     fn patch(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, RedfishErr> {
