@@ -266,14 +266,13 @@ mod tests {
         serde_json::from_slice(&body).unwrap()
     }
 
-    async fn jget(app: &mut NormalizePath<Router>, uri: &str, status_code: StatusCode, allow: &str, schema_url: Option<&str>) -> Value {
+    async fn jget(app: &mut NormalizePath<Router>, uri: &str, status_code: StatusCode, headers: &[(&str, &str)]) -> Value {
         let response = get(app, uri).await;
         assert_eq!(response.status(), status_code);
         assert_eq!(get_header(&response, "OData-Version"), "4.0");
-        assert_eq!(get_header(&response, "allow"), allow);
         assert_eq!(get_header(&response, "cache-control"), "no-cache");
-        if schema_url.is_some() {
-            assert_eq!(get_header(&response, "Link"), format!("<{}>; rel=describedby", schema_url.unwrap()));
+        for (key, val) in headers {
+            assert_eq!(get_header(&response, *key), *val);
         }
         get_response_json(response).await
     }
@@ -316,7 +315,7 @@ mod tests {
     #[tokio::test]
     async fn base_redfish_path() {
         let mut app = app();
-        let body = jget(&mut app, "/redfish", StatusCode::OK, "GET,HEAD", None).await;
+        let body = jget(&mut app, "/redfish", StatusCode::OK, &[("allow", "GET,HEAD")]).await;
         assert_eq!(body, json!({ "v1": "/redfish/v1/" }));
     }
 
@@ -337,7 +336,12 @@ mod tests {
     #[tokio::test]
     async fn get_redfish_v1() {
         let mut app = app();
-        let body = jget(&mut app, "/redfish/v1", StatusCode::OK, "GET,HEAD", Some("https://redfish.dmtf.org/schemas/v1/ServiceRoot.v1_15_0.json")).await;
+        let body = jget(
+            &mut app, "/redfish/v1", StatusCode::OK,
+            &[
+                ("allow", "GET,HEAD"),
+                ("link", "<https://redfish.dmtf.org/schemas/v1/ServiceRoot.v1_15_0.json>; rel=describedby"),
+            ]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1",
             "@odata.type": "#ServiceRoot.v1_15_0.ServiceRoot",
@@ -360,7 +364,7 @@ mod tests {
     #[tokio::test]
     async fn get_odata_service_doc() {
         let mut app = app();
-        let body = jget(&mut app, "/redfish/v1/odata", StatusCode::OK, "GET,HEAD", None).await;
+        let body = jget(&mut app, "/redfish/v1/odata", StatusCode::OK, &[("allow", "GET,HEAD")]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/odata",
             "@odata.context": "/redfish/v1/$metadata",
@@ -456,8 +460,10 @@ mod tests {
         let (token, _) = login(&mut app).await;
         let body = jget(
             &mut app, "/redfish/v1/SessionService/", StatusCode::OK,
-            "GET,HEAD,PATCH",
-            Some("https://redfish.dmtf.org/schemas/v1/SessionService.v1_1_9.json"),
+            &[
+                ("allow", "GET,HEAD,PATCH"),
+                ("link", "<https://redfish.dmtf.org/schemas/v1/SessionService.v1_1_9.json>; rel=describedby"),
+            ],
             //Some(token),
         ).await;
         assert_eq!(body, json!({
@@ -474,7 +480,13 @@ mod tests {
     #[tokio::test]
     async fn get_session_collection() {
         let mut app = app();
-        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, "GET,HEAD,POST", Some("https://redfish.dmtf.org/schemas/v1/SessionCollection.json")).await;
+        let body = jget(
+            &mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK,
+            &[
+                ("allow", "GET,HEAD,POST"),
+                ("link", "<https://redfish.dmtf.org/schemas/v1/SessionCollection.json>; rel=describedby"),
+            ],
+        ).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions",
             "@odata.type": "#SessionCollection.SessionCollection",
@@ -489,7 +501,7 @@ mod tests {
     #[tokio::test]
     async fn default_administrator_role() {
         let mut app = app();
-        let body = jget(&mut app, "/redfish/v1/AccountService/Roles/Administrator", StatusCode::OK, "GET,HEAD", Some("https://redfish.dmtf.org/schemas/v1/Role.v1_3_1.json")).await;
+        let body = jget(&mut app, "/redfish/v1/AccountService/Roles/Administrator", StatusCode::OK, &[]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/AccountService/Roles/Administrator",
             "@odata.type": "#Role.v1_3_1.Role",
@@ -510,7 +522,7 @@ mod tests {
     #[tokio::test]
     async fn default_operator_role() {
         let mut app = app();
-        let body = jget(&mut app, "/redfish/v1/AccountService/Roles/Operator", StatusCode::OK, "GET,HEAD", Some("https://redfish.dmtf.org/schemas/v1/Role.v1_3_1.json")).await;
+        let body = jget(&mut app, "/redfish/v1/AccountService/Roles/Operator", StatusCode::OK, &[]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/AccountService/Roles/Operator",
             "@odata.type": "#Role.v1_3_1.Role",
@@ -529,7 +541,7 @@ mod tests {
     #[tokio::test]
     async fn default_readonly_role() {
         let mut app = app();
-        let body = jget(&mut app, "/redfish/v1/AccountService/Roles/ReadOnly", StatusCode::OK, "GET,HEAD", Some("https://redfish.dmtf.org/schemas/v1/Role.v1_3_1.json")).await;
+        let body = jget(&mut app, "/redfish/v1/AccountService/Roles/ReadOnly", StatusCode::OK, &[]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/AccountService/Roles/ReadOnly",
             "@odata.type": "#Role.v1_3_1.Role",
@@ -591,7 +603,7 @@ mod tests {
             "Sessions" : {"@odata.id": "/redfish/v1/SessionService/Sessions"},
         }));
 
-        let body = jget(&mut app, "/redfish/v1/SessionService/", StatusCode::OK, "GET,HEAD,PATCH", Some("https://redfish.dmtf.org/schemas/v1/SessionService.v1_1_9.json")).await;
+        let body = jget(&mut app, "/redfish/v1/SessionService/", StatusCode::OK, &[("allow", "GET,HEAD,PATCH")]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService",
             "@odata.type": "#SessionService.v1_1_9.SessionService",
@@ -625,7 +637,7 @@ mod tests {
             "Password": serde_json::Value::Null,
         }));
 
-        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/1", StatusCode::OK, "GET,HEAD,DELETE", Some("https://redfish.dmtf.org/schemas/v1/Session.v1_6_0.json")).await;
+        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/1", StatusCode::OK, &[("allow", "GET,HEAD,DELETE")]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions/1",
             "@odata.type": "#Session.v1_6_0.Session",
@@ -635,7 +647,7 @@ mod tests {
             "Password": serde_json::Value::Null,
         }));
 
-        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/2", StatusCode::OK, "GET,HEAD,DELETE", Some("https://redfish.dmtf.org/schemas/v1/Session.v1_6_0.json")).await;
+        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/2", StatusCode::OK, &[("allow", "GET,HEAD,DELETE")]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions/2",
             "@odata.type": "#Session.v1_6_0.Session",
@@ -645,7 +657,7 @@ mod tests {
             "Password": serde_json::Value::Null,
         }));
 
-        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, "GET,HEAD,POST", Some("https://redfish.dmtf.org/schemas/v1/SessionCollection.json")).await;
+        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, &[("allow", "GET,HEAD,POST")]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions",
             "@odata.type": "#SessionCollection.SessionCollection",
@@ -661,7 +673,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         assert_eq!(response.headers().get("cache-control").unwrap().to_str().unwrap(), "no-cache");
 
-        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, "GET,HEAD,POST", Some("https://redfish.dmtf.org/schemas/v1/SessionCollection.json")).await;
+        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, &[("allow", "GET,HEAD,POST")]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions",
             "@odata.type": "#SessionCollection.SessionCollection",
@@ -675,7 +687,7 @@ mod tests {
         let response = get(&mut app, "/redfish/v1/SessionService/Sessions/1").await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
-        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/2", StatusCode::OK, "GET,HEAD,DELETE", Some("https://redfish.dmtf.org/schemas/v1/Session.v1_6_0.json")).await;
+        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/2", StatusCode::OK, &[("allow", "GET,HEAD,DELETE")]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions/2",
             "@odata.type": "#Session.v1_6_0.Session",
