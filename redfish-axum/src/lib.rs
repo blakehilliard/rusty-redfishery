@@ -47,7 +47,6 @@ pub trait RedfishTree {
 
     // Create a resource, given the collction URI and JSON input.
     // Return Ok(RedfishNode) of the new resource, or Err.
-    // TODO: Properly handle various error cases.
     fn create(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, RedfishErr>;
 
     // Delete a resource, given its URI.
