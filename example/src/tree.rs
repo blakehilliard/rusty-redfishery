@@ -212,19 +212,19 @@ impl RedfishTree for MockTree {
         return Ok(());
     }
 
-    fn patch(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, ()> {
+    fn patch(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, RedfishErr> {
         let resource = self.resources.get_mut(uri);
         if resource.is_none() {
-            return Err(());
+            return Err(RedfishErr::NotFound);
         }
         let resource = resource.unwrap();
         if ! resource.can_patch() {
-            return Err(());
-        }
-        if uri != "/redfish/v1/SessionService" {
-            return Err(());
+            return Err(RedfishErr::Unauthorized); //FIXME: MethodNotAllowed
         }
         // TODO: Move to per-resource functions
+        if uri != "/redfish/v1/SessionService" {
+            return Err(RedfishErr::Unauthorized); //FIXME: MethodNotAllowed?
+        }
         // FIXME: Allow patch that doesn't set this! And do correct error handling!
         let new_timeout = req.as_object().unwrap().get("SessionTimeout").unwrap().as_u64().unwrap();
         resource.body["SessionTimeout"] = Value::from(new_timeout);

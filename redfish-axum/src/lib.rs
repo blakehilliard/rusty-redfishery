@@ -55,7 +55,7 @@ pub trait RedfishTree {
 
     // Patch a resource.
     // Return the patched resource on success, or Error.
-    fn patch(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, ()>; // FIXME: RedfishErr
+    fn patch(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, RedfishErr>;
 
     fn get_collection_types(&self) -> &[RedfishCollectionType];
 
@@ -133,6 +133,7 @@ async fn deleter(
             StatusCode::NO_CONTENT,
             [("Cache-Control", "no-cache")],
         ).into_response(),
+        // FIXME: Take advantage of RedfishErr
         Err(_) => {
             match tree.get(uri.as_str()) {
                 Ok(node) => (
@@ -172,6 +173,7 @@ async fn poster(
         Ok(node) => get_node_created_response(node),
         Err(error) => match error {
             RedfishErr::Unauthorized => get_error_response(error),
+            // FIXME: Take advantage of RedfishErr
             _ => match tree.get(uri.as_str()) {
                 Ok(node) => (
                     StatusCode::METHOD_NOT_ALLOWED,
@@ -204,6 +206,7 @@ async fn patcher(
     let mut tree = state.tree.lock().unwrap();
     match tree.patch(uri.as_str(), payload) {
         Ok(node) => get_node_get_response(node),
+        // FIXME: Take advantage of RedfishErr
         Err(_) => {
             match tree.get(uri.as_str()) {
                 Ok(node) => (
