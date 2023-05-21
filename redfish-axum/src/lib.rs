@@ -165,7 +165,8 @@ async fn poster(
             if uri == "/redfish/v1/SessionService/Sessions" {
                 let token = Uuid::new_v4();
                 state.sessions.insert(token, String::from(node.get_uri()));
-                let header_val = HeaderValue::from_str(token.as_simple().to_string().as_str()).expect("FIXME");
+                let token = token.as_simple().to_string();
+                let header_val = HeaderValue::from_str(token.as_str()).expect("FIXME");
                 additional_headers.insert("x-auth-token", header_val);
             }
             get_node_created_response(node, additional_headers)
