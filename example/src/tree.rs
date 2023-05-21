@@ -79,9 +79,14 @@ impl RedfishNode for RedfishCollection {
 pub struct RedfishResource {
     uri: String, //TODO: Enforce things here? Does DMTF recommend trailing slash or no?
     resource_type: RedfishResourceType,
-    body: Map<String, Value>,
-    allowed_methods: AllowedMethods,
+    pub body: Map<String, Value>,
     collection: Option<String>,
+    // if user should not be able to PATCH this resource, this should be None
+    // else, it should be a function that applies the patch.
+    patch: Option<fn(&mut RedfishResource, serde_json::Value) -> Result<(), RedfishErr>>,
+    // if use should not be able to DELETE this resource, this should be None.
+    // else, it should be a function that performs any extra logic associated with deleting the resource.
+    delete: Option<fn(&RedfishResource) -> Result<(), RedfishErr>>,
 }
 
 impl RedfishResource {
@@ -91,8 +96,8 @@ impl RedfishResource {
         schema_version: RedfishResourceSchemaVersion,
         term_name: String,
         name: String,
-        deletable: bool,
-        patchable: bool,
+        delete: Option<fn(&RedfishResource) -> Result<(), RedfishErr>>,
+        patch: Option<fn(&mut RedfishResource, serde_json::Value) -> Result<(), RedfishErr>>,
         collection: Option<String>,
         rest: Value,
     ) -> Self {
@@ -103,14 +108,8 @@ impl RedfishResource {
         body.insert(String::from("Id"), json!(id));
         body.insert(String::from("Name"), json!(name));
         let resource_type = RedfishResourceType::new_dmtf(schema_name, schema_version);
-        let allowed_methods = AllowedMethods {
-            delete: deletable,
-            get: true,
-            patch: patchable,
-            post: false,
-        };
         Self {
-            uri: String::from(uri), resource_type, body, allowed_methods, collection,
+            uri: String::from(uri), resource_type, body, delete, patch, collection,
         }
     }
 }
@@ -125,7 +124,12 @@ impl RedfishNode for RedfishResource {
     }
 
     fn get_allowed_methods(&self) -> AllowedMethods {
-        self.allowed_methods
+        AllowedMethods {
+            delete: self.delete.is_some(),
+            get: true,
+            patch: self.patch.is_some(),
+            post: false,
+        }
     }
 
     fn described_by(&self) -> Option<&str> {
@@ -181,7 +185,7 @@ impl RedfishTree for MockTree {
     fn create(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, RedfishErr> {
         match self.collections.get_mut(uri) {
             None => match self.resources.get(uri) {
-                Some(resource) => Err(RedfishErr::MethodNotAllowed(resource.allowed_methods)),
+                Some(resource) => Err(RedfishErr::MethodNotAllowed(resource.get_allowed_methods())),
                 None => Err(RedfishErr::NotFound),
             },
             Some(collection) => match collection.post {
@@ -205,9 +209,11 @@ impl RedfishTree for MockTree {
             return Err(RedfishErr::NotFound);
         }
         let resource = resource.unwrap();
-        if ! resource.allowed_methods.delete {
-            return Err(RedfishErr::MethodNotAllowed(resource.allowed_methods));
+        let allowed_methods = resource.get_allowed_methods();
+        if ! allowed_methods.delete {
+            return Err(RedfishErr::MethodNotAllowed(allowed_methods));
         }
+        // FIXME: call delete() on resource
         if let Some(collection_uri) = &resource.collection {
             if let Some(collection) = self.collections.get_mut(collection_uri) {
                 if let Some(member_index) = collection.members.iter().position(|x| x == uri) {
@@ -220,22 +226,16 @@ impl RedfishTree for MockTree {
     }
 
     fn patch(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, RedfishErr> {
-        let resource = self.resources.get_mut(uri);
-        if resource.is_none() {
-            return Err(RedfishErr::NotFound);
+        match self.resources.get_mut(uri) {
+            None => Err(RedfishErr::NotFound),
+            Some(resource) => match resource.patch {
+                None => Err(RedfishErr::MethodNotAllowed(resource.get_allowed_methods())),
+                Some(patch) => {
+                    patch(resource, req)?;
+                    Ok(resource)
+                },
+            },
         }
-        let resource = resource.unwrap();
-        if ! resource.allowed_methods.patch {
-            return Err(RedfishErr::MethodNotAllowed(resource.allowed_methods));
-        }
-        // TODO: Move to per-resource functions
-        if uri != "/redfish/v1/SessionService" {
-            return Err(RedfishErr::MethodNotAllowed(resource.allowed_methods));
-        }
-        // FIXME: Allow patch that doesn't set this! And do correct error handling!
-        let new_timeout = req.as_object().unwrap().get("SessionTimeout").unwrap().as_u64().unwrap();
-        resource.body["SessionTimeout"] = Value::from(new_timeout);
-        return Ok(resource);
     }
 
     fn get_collection_types(&self) -> &[RedfishCollectionType] {

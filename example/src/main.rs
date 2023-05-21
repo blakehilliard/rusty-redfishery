@@ -3,7 +3,7 @@ use axum::{
     Router,
 };
 use tower_http::normalize_path::{NormalizePath};
-use serde_json::json;
+use serde_json::{json, Value};
 use redfish_axum::{RedfishNode, RedfishErr};
 use redfish_data::{
     RedfishResourceSchemaVersion,
@@ -13,7 +13,7 @@ use redfish_data::{
 mod tree;
 use tree::{MockTree, RedfishCollection, RedfishResource};
 
-fn create_session(collection: &RedfishCollection, req: serde_json::Value) -> Result<RedfishResource, RedfishErr> {
+fn create_session(collection: &RedfishCollection, req: Value) -> Result<RedfishResource, RedfishErr> {
     // Look at existing members to see next Id to pick
     let mut highest = 0;
     for member in collection.members.iter() {
@@ -33,14 +33,21 @@ fn create_session(collection: &RedfishCollection, req: serde_json::Value) -> Res
         RedfishResourceSchemaVersion::new(1, 6, 0),
         String::from("Session"),
         String::from(format!("Session {}", id)),
-        true,
-        false,
+        Some(|_| { Ok(()) }),
+        None,
         Some(String::from(collection.get_uri())),
         json!({
             "UserName": req.as_object().unwrap().get("UserName").unwrap().as_str(),
             "Password": serde_json::Value::Null,
         }),
     ))
+}
+
+fn patch_session_service(resource: &mut RedfishResource, req: Value) -> Result<(), RedfishErr> {
+    // FIXME: Allow patch that doesn't set this! And do correct error handling!
+    let new_timeout = req.as_object().unwrap().get("SessionTimeout").unwrap().as_u64().unwrap();
+    resource.body["SessionTimeout"] = Value::from(new_timeout);
+    Ok(())
 }
 
 fn get_mock_tree() -> MockTree {
@@ -51,8 +58,8 @@ fn get_mock_tree() -> MockTree {
         RedfishResourceSchemaVersion::new(1, 15, 0),
         String::from("ServiceRoot"),
         String::from("Root Service"),
-        false,
-        false,
+        None,
+        None,
         None,
         json!({
             "AccountService": {
@@ -74,8 +81,8 @@ fn get_mock_tree() -> MockTree {
         RedfishResourceSchemaVersion::new(1, 1, 9),
         String::from("SessionService"),
         String::from("Session Service"),
-        false,
-        true,
+        None,
+        Some(patch_session_service),
         None,
         json!({
             "@Redfish.WriteableProperties": ["SessionTimeout"],
@@ -98,8 +105,8 @@ fn get_mock_tree() -> MockTree {
         RedfishResourceSchemaVersion::new(1, 6, 0),
         String::from("Session"),
         String::from("Session 1"),
-        true,
-        false,
+        Some(|_| { Ok(()) }),
+        None,
         Some(String::from("/redfish/v1/SessionService/Sessions")),
         json!({
             "UserName": "admin",
@@ -112,8 +119,8 @@ fn get_mock_tree() -> MockTree {
         RedfishResourceSchemaVersion::new(1, 12, 0),
         String::from("AccountService"),
         String::from("Account Service"),
-        false,
-        false,
+        None,
+        None,
         None,
         json!({
             "Accounts": {
@@ -137,8 +144,8 @@ fn get_mock_tree() -> MockTree {
         RedfishResourceSchemaVersion::new(1, 10, 0),
         String::from("ManagerAccount"),
         String::from("Admin Account"),
-        false,
-        false,
+        None,
+        None,
         Some(String::from("/redfish/v1/AccountService/Accounts")),
         json!({
             "@Redfish.WriteableProperties": ["Password"],
@@ -169,8 +176,8 @@ fn get_mock_tree() -> MockTree {
         RedfishResourceSchemaVersion::new(1, 3, 1),
         String::from("Role"),
         String::from("Administrator Role"),
-        false,
-        false,
+        None,
+        None,
         Some(String::from("/redfish/v1/AccountService/Roles")),
         json!({
             "AssignedPrivileges": [
@@ -190,8 +197,8 @@ fn get_mock_tree() -> MockTree {
         RedfishResourceSchemaVersion::new(1, 3, 1),
         String::from("Role"),
         String::from("Operator Role"),
-        false,
-        false,
+        None,
+        None,
         Some(String::from("/redfish/v1/AccountService/Roles")),
         json!({
             "AssignedPrivileges": [
@@ -209,8 +216,8 @@ fn get_mock_tree() -> MockTree {
         RedfishResourceSchemaVersion::new(1, 3, 1),
         String::from("Role"),
         String::from("ReadOnly Role"),
-        false,
-        false,
+        None,
+        None,
         Some(String::from("/redfish/v1/AccountService/Roles")),
         json!({
             "AssignedPrivileges": [

@@ -155,6 +155,8 @@ async fn poster(
         uri = stripped.to_string();
     }
 
+    // TODO: token: Just a UUID4? Base64-encoded?
+
     let mut tree = state.tree.lock().unwrap();
     match tree.create(uri.as_str(), payload) {
         Ok(node) => get_node_created_response(node),
