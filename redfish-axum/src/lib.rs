@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::{sync::{Arc, Mutex}, collections::HashMap};
 use axum::{
     extract::{
         Path,
@@ -13,6 +13,7 @@ use tower_http::normalize_path::{NormalizePath, NormalizePathLayer};
 use tower::layer::Layer;
 use serde_json::{json};
 use http::{header::{self}, HeaderMap, HeaderValue, HeaderName};
+use uuid::Uuid;
 use redfish_data::{
     RedfishCollectionType,
     RedfishResourceType,
@@ -65,6 +66,7 @@ pub trait RedfishTree {
 pub fn app<T: RedfishTree + Send + Sync + 'static>(tree: T) -> NormalizePath<Router> {
     let state = AppState {
         tree: Arc::new(Mutex::new(tree)),
+        sessions: HashMap::new(),
     };
 
     let app = Router::new()
@@ -86,6 +88,7 @@ pub fn app<T: RedfishTree + Send + Sync + 'static>(tree: T) -> NormalizePath<Rou
 #[derive(Clone)]
 struct AppState {
     tree: Arc<Mutex<dyn RedfishTree + Send>>,
+    sessions: HashMap<Uuid, String>,
 }
 
 async fn getter(
@@ -140,7 +143,7 @@ async fn deleter(
 async fn poster(
     headers: HeaderMap,
     Path(path): Path<String>,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
     Json(payload): Json<serde_json::Value>,
 ) -> Response {
     if let Some(odata_version) = headers.get("odata-version") {
@@ -154,11 +157,19 @@ async fn poster(
         uri = stripped.to_string();
     }
 
-    // TODO: token: Just a UUID4? Base64-encoded?
-
     let mut tree = state.tree.lock().unwrap();
     match tree.create(uri.as_str(), payload) {
-        Ok(node) => get_node_created_response(node),
+        Ok(node) => {
+            let mut additional_headers = HeaderMap::new();
+            // TODO: Would it be better to inspect node to see if it's a Session?
+            if uri == "/redfish/v1/SessionService/Sessions" {
+                let token = Uuid::new_v4();
+                state.sessions.insert(token, String::from(node.get_uri()));
+                let header_val = HeaderValue::from_str(token.as_simple().to_string().as_str()).expect("FIXME");
+                additional_headers.insert("x-auth-token", header_val);
+            }
+            get_node_created_response(node, additional_headers)
+        },
         Err(error) => get_error_response(error),
     }
 }
@@ -257,8 +268,9 @@ fn get_node_get_response(node: &dyn RedfishNode) -> Response {
     ).into_response()
 }
 
-fn get_node_created_response(node: &dyn RedfishNode) -> Response {
+fn get_node_created_response(node: &dyn RedfishNode, additional_headers: HeaderMap) -> Response {
     let mut headers = get_standard_headers(node_to_allow(node).as_str());
+    headers.extend(additional_headers);
     add_described_by_header(&mut headers, node);
     headers.insert(header::LOCATION, HeaderValue::from_str(node.get_uri()).expect("FIXME"));
     JsonResponse::new(

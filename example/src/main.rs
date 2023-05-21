@@ -578,6 +578,7 @@ mod tests {
         assert_eq!(response.headers().get("Location").unwrap().to_str().unwrap(), "/redfish/v1/SessionService/Sessions/2");
         assert_eq!(response.headers().get("cache-control").unwrap().to_str().unwrap(), "no-cache");
         assert_eq!(response.headers().get("Link").unwrap().to_str().unwrap(), "<https://redfish.dmtf.org/schemas/v1/Session.v1_6_0.json>; rel=describedby");
+        assert_eq!(response.headers().get("X-Auth-Token").is_some(), true);
 
         let body = get_response_json(response).await;
         assert_eq!(body, json!({
