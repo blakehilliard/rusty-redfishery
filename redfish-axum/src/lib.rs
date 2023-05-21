@@ -163,8 +163,7 @@ async fn poster(
             let mut additional_headers = HeaderMap::new();
             // TODO: Would it be better to inspect node to see if it's a Session?
             if uri == "/redfish/v1/SessionService/Sessions" {
-                let token = Uuid::new_v4();
-                let token = token.as_simple().to_string();
+                let token = Uuid::new_v4().as_simple().to_string();
                 state.sessions.insert(token.clone(), String::from(node.get_uri()));
                 let header_val = HeaderValue::from_str(token.as_str()).expect("FIXME");
                 additional_headers.insert("x-auth-token", header_val);
