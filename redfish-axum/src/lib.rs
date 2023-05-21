@@ -30,7 +30,7 @@ use json::JsonResponse;
 pub enum RedfishErr {
     NotFound,
     Unauthorized,
-    //TODO: MethodNotAllowed(AllowedMethods),
+    MethodNotAllowed(AllowedMethods),
 }
 
 pub trait RedfishNode {
@@ -134,21 +134,7 @@ async fn deleter(
             StatusCode::NO_CONTENT,
             [("Cache-Control", "no-cache")],
         ).into_response(),
-        // FIXME: Take advantage of RedfishErr
-        Err(_) => {
-            match tree.get(uri.as_str()) {
-                Ok(node) => (
-                    StatusCode::METHOD_NOT_ALLOWED,
-                    [(header::ALLOW, node_to_allow(node))],
-                    [("OData-Version", "4.0")],
-                    [("Cache-Control", "no-cache")],
-                ).into_response(),
-                _ => (
-                    StatusCode::NOT_FOUND,
-                    [("Cache-Control", "no-cache")],
-                ).into_response(),
-            }
-        }
+        Err(error) => get_error_response(error),
     }
 }
 
@@ -172,23 +158,7 @@ async fn poster(
     let mut tree = state.tree.lock().unwrap();
     match tree.create(uri.as_str(), payload) {
         Ok(node) => get_node_created_response(node),
-        Err(error) => match error {
-            RedfishErr::Unauthorized => get_error_response(error),
-            // FIXME: Take advantage of RedfishErr
-            _ => match tree.get(uri.as_str()) {
-                Ok(node) => (
-                    StatusCode::METHOD_NOT_ALLOWED,
-                    [(header::ALLOW, node_to_allow(node))],
-                    [("OData-Version", "4.0")],
-                    [("Cache-Control", "no-cache")],
-                ).into_response(),
-                _ => (
-                    StatusCode::NOT_FOUND,
-                    [("OData-Version", "4.0")],
-                    [("Cache-Control", "no-cache")],
-                ).into_response(),
-            }
-        }
+        Err(error) => get_error_response(error),
     }
 }
 
@@ -207,17 +177,7 @@ async fn patcher(
     let mut tree = state.tree.lock().unwrap();
     match tree.patch(uri.as_str(), payload) {
         Ok(node) => get_node_get_response(node),
-        // FIXME: Take advantage of RedfishErr
-        Err(_) => {
-            match tree.get(uri.as_str()) {
-                Ok(node) => (
-                    StatusCode::METHOD_NOT_ALLOWED,
-                    [(header::ALLOW, node_to_allow(node))],
-                    [("Cache-Control", "no-cache")],
-                ).into_response(),
-                _ => StatusCode::NOT_FOUND.into_response(),
-            }
-        }
+        Err(error) => get_error_response(error),
     }
 }
 
@@ -335,6 +295,12 @@ fn get_error_response(error: RedfishErr) -> Response {
             StatusCode::UNAUTHORIZED,
             [("OData-Version", "4.0")],
             [("Cache-Control", "no-cache")]
+        ).into_response(),
+        RedfishErr::MethodNotAllowed(allowed) => (
+            StatusCode::METHOD_NOT_ALLOWED,
+            [(header::ALLOW, allowed.to_string())],
+            [("OData-Version", "4.0")],
+            [("Cache-Control", "no-cache")],
         ).into_response(),
     }
 }

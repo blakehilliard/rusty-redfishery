@@ -1,7 +1,7 @@
 use serde::Serialize;
 use serde_json::{Value, json, Map};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct AllowedMethods {
     pub delete: bool,
     pub get: bool,

@@ -179,22 +179,23 @@ impl RedfishTree for MockTree {
     }
 
     fn create(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, RedfishErr> {
-        let collection = self.collections.get_mut(uri);
-        if collection.is_none() {
-            return Err(RedfishErr::NotFound);
-        }
-        let collection = collection.unwrap();
-        match collection.post {
-            None => Err(RedfishErr::NotFound), // FIXME: Better error
-            Some(post) => {
-                let member = post(collection, req)?;
-                let member_uri = member.uri.clone();
-                self.resources.insert(member.uri.clone(), member);
-                // Update members of collection.
-                collection.members.push(member_uri.clone());
-                // Return new resource.
-                self.get(member_uri.as_str())
-            }
+        match self.collections.get_mut(uri) {
+            None => match self.resources.get(uri) {
+                Some(resource) => Err(RedfishErr::MethodNotAllowed(resource.allowed_methods)),
+                None => Err(RedfishErr::NotFound),
+            },
+            Some(collection) => match collection.post {
+                None => Err(RedfishErr::MethodNotAllowed(collection.get_allowed_methods())),
+                Some(post) => {
+                    let member = post(collection, req)?;
+                    let member_uri = member.uri.clone();
+                    self.resources.insert(member.uri.clone(), member);
+                    // Update members of collection.
+                    collection.members.push(member_uri.clone());
+                    // Return new resource.
+                    self.get(member_uri.as_str())
+                }
+            },
         }
     }
 
@@ -205,7 +206,7 @@ impl RedfishTree for MockTree {
         }
         let resource = resource.unwrap();
         if ! resource.allowed_methods.delete {
-            return Err(RedfishErr::Unauthorized); //FIXME: MethodNotAllowed
+            return Err(RedfishErr::MethodNotAllowed(resource.allowed_methods));
         }
         if let Some(collection_uri) = &resource.collection {
             if let Some(collection) = self.collections.get_mut(collection_uri) {
@@ -225,11 +226,11 @@ impl RedfishTree for MockTree {
         }
         let resource = resource.unwrap();
         if ! resource.allowed_methods.patch {
-            return Err(RedfishErr::Unauthorized); //FIXME: MethodNotAllowed
+            return Err(RedfishErr::MethodNotAllowed(resource.allowed_methods));
         }
         // TODO: Move to per-resource functions
         if uri != "/redfish/v1/SessionService" {
-            return Err(RedfishErr::Unauthorized); //FIXME: MethodNotAllowed?
+            return Err(RedfishErr::MethodNotAllowed(resource.allowed_methods));
         }
         // FIXME: Allow patch that doesn't set this! And do correct error handling!
         let new_timeout = req.as_object().unwrap().get("SessionTimeout").unwrap().as_u64().unwrap();
