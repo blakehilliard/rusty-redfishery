@@ -16,7 +16,9 @@ use http::{header::{self}, HeaderMap, HeaderValue, HeaderName};
 use redfish_data::{
     RedfishCollectionType,
     RedfishResourceType,
-    get_odata_metadata_document, get_odata_service_document,
+    AllowedMethods,
+    get_odata_metadata_document,
+    get_odata_service_document,
 };
 
 mod json;
@@ -28,14 +30,13 @@ use json::JsonResponse;
 pub enum RedfishErr {
     NotFound,
     Unauthorized,
+    //TODO: MethodNotAllowed(AllowedMethods),
 }
 
 pub trait RedfishNode {
     fn get_uri(&self) -> &str;
     fn get_body(&self) -> serde_json::Value;
-    fn can_post(&self) -> bool;
-    fn can_delete(&self) -> bool;
-    fn can_patch(&self) -> bool;
+    fn get_allowed_methods(&self) -> AllowedMethods;
     fn described_by(&self) -> Option<&str>; // TODO: Stricter URL type???
 }
 
@@ -266,17 +267,7 @@ async fn get_odata_service_doc(
 }
 
 fn node_to_allow(node: &dyn RedfishNode) -> String {
-    let mut allow = String::from("GET,HEAD");
-    if node.can_delete() {
-        allow.push_str(",DELETE");
-    }
-    if node.can_patch() {
-        allow.push_str(",PATCH");
-    }
-    if node.can_post() {
-        allow.push_str(",POST");
-    }
-    allow
+    node.get_allowed_methods().to_string()
 }
 
 fn bad_odata_version_response() -> Response {

@@ -9,7 +9,7 @@ use redfish_data::{
     RedfishResourceType,
     RedfishSchemaVersion,
     RedfishResourceSchemaVersion,
-    get_uri_id,
+    get_uri_id, AllowedMethods,
 };
 
 pub struct RedfishCollection {
@@ -62,11 +62,14 @@ impl RedfishNode for RedfishCollection {
         })
     }
 
-    fn can_delete(&self) -> bool { false }
-
-    fn can_patch(&self) -> bool { false }
-
-    fn can_post(&self) -> bool { self.post.is_some() }
+    fn get_allowed_methods(&self) -> AllowedMethods {
+        AllowedMethods {
+            delete: false,
+            get: true,
+            patch: false,
+            post: self.post.is_some(),
+        }
+    }
 
     fn described_by(&self) -> Option<&str> {
         Some(self.resource_type.described_by.as_str())
@@ -77,8 +80,7 @@ pub struct RedfishResource {
     uri: String, //TODO: Enforce things here? Does DMTF recommend trailing slash or no?
     resource_type: RedfishResourceType,
     body: Map<String, Value>,
-    deletable: bool,
-    patchable: bool,
+    allowed_methods: AllowedMethods,
     collection: Option<String>,
 }
 
@@ -101,8 +103,14 @@ impl RedfishResource {
         body.insert(String::from("Id"), json!(id));
         body.insert(String::from("Name"), json!(name));
         let resource_type = RedfishResourceType::new_dmtf(schema_name, schema_version);
+        let allowed_methods = AllowedMethods {
+            delete: deletable,
+            get: true,
+            patch: patchable,
+            post: false,
+        };
         Self {
-            uri: String::from(uri), resource_type, body, deletable, patchable, collection,
+            uri: String::from(uri), resource_type, body, allowed_methods, collection,
         }
     }
 }
@@ -116,11 +124,9 @@ impl RedfishNode for RedfishResource {
         Value::Object(self.body.clone())
     }
 
-    fn can_delete(&self) -> bool { self.deletable }
-
-    fn can_patch(&self) -> bool { self.patchable }
-
-    fn can_post(&self) -> bool { false }
+    fn get_allowed_methods(&self) -> AllowedMethods {
+        self.allowed_methods
+    }
 
     fn described_by(&self) -> Option<&str> {
         Some(self.resource_type.described_by.as_str())
@@ -198,7 +204,7 @@ impl RedfishTree for MockTree {
             return Err(RedfishErr::NotFound);
         }
         let resource = resource.unwrap();
-        if ! resource.can_delete() {
+        if ! resource.allowed_methods.delete {
             return Err(RedfishErr::Unauthorized); //FIXME: MethodNotAllowed
         }
         if let Some(collection_uri) = &resource.collection {
@@ -218,7 +224,7 @@ impl RedfishTree for MockTree {
             return Err(RedfishErr::NotFound);
         }
         let resource = resource.unwrap();
-        if ! resource.can_patch() {
+        if ! resource.allowed_methods.patch {
             return Err(RedfishErr::Unauthorized); //FIXME: MethodNotAllowed
         }
         // TODO: Move to per-resource functions

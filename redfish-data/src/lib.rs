@@ -1,7 +1,37 @@
 use serde::Serialize;
 use serde_json::{Value, json, Map};
 
+#[derive(Clone, Copy)]
+pub struct AllowedMethods {
+    pub delete: bool,
+    pub get: bool,
+    pub patch: bool,
+    pub post: bool,
+}
+
+impl AllowedMethods {
+    // TODO: Use ToString trait?
+    pub fn to_string(&self) -> String {
+        let mut val = Vec::new();
+        if self.get {
+            val.push("GET");
+            val.push("HEAD");
+        }
+        if self.delete {
+            val.push("DELETE");
+        }
+        if self.patch {
+            val.push("PATCH");
+        }
+        if self.post {
+            val.push("POST");
+        }
+        val.join(",")
+    }
+}
+
 pub trait RedfishSchemaVersion {
+    // FIXME: Use ToString trait?
     fn to_str(&self) -> String;
 }
 
