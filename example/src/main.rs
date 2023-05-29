@@ -322,9 +322,14 @@ mod tests {
         app.ready().await.unwrap().call(req).await.unwrap()
     }
 
-    async fn patch(app: &mut NormalizePath<Router>, uri: &str, req: serde_json::Value) -> Response {
+    async fn patch(app: &mut NormalizePath<Router>, uri: &str, req: serde_json::Value, token: Option<&str>) -> Response {
         let body = Body::from(serde_json::to_vec(&req).unwrap());
-        let req = Request::patch(uri).header("Content-Type", "application/json").body(body).unwrap();
+        let mut req = Request::patch(uri).header("Content-Type", "application/json");
+        if let Some(token) = token {
+            let headers = req.headers_mut().unwrap();
+            headers.insert("x-auth-token", HeaderValue::from_str(token).unwrap());
+        }
+        let req = req.body(body).unwrap();
         app.ready().await.unwrap().call(req).await.unwrap()
     }
 
@@ -490,6 +495,16 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn patch_missing_token() {
+        let mut app = app();
+        let response = patch(&mut app, "/redfish/v1", json!({}), None).await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        let body = std::str::from_utf8(&body).unwrap();
+        assert_eq!(body, "");
+    }
+
+    #[tokio::test]
     async fn session_service() {
         let mut app = app();
         let (token, _) = login(&mut app).await;
@@ -617,8 +632,9 @@ mod tests {
     #[tokio::test]
     async fn patch_not_allowed() {
         let mut app = app();
+        let (token, _) = login(&mut app).await;
         let data = json!({});
-        let response = patch(&mut app, "/redfish/v1", data).await;
+        let response = patch(&mut app, "/redfish/v1", data, Some(token.as_str())).await;
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
         assert_eq!(get_header(&response, "allow"), "GET,HEAD");
     }
@@ -629,7 +645,7 @@ mod tests {
         let (token, _) = login(&mut app).await;
         let data = json!({"SessionTimeout": 300});
         // TODO: pass in token
-        let response = patch(&mut app, "/redfish/v1/SessionService", data).await;
+        let response = patch(&mut app, "/redfish/v1/SessionService", data, Some(token.as_str())).await;
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(get_header(&response, "allow"), "GET,HEAD,PATCH");
         assert_eq!(get_header(&response, "cache-control"), "no-cache");
@@ -795,7 +811,8 @@ mod tests {
     #[tokio::test]
     async fn patch_not_found() {
         let mut app = app();
-        let response = patch(&mut app, "/redfish/v1/notfound", json!({})).await;
+        let (token, _) = login(&mut app).await;
+        let response = patch(&mut app, "/redfish/v1/notfound", json!({}), Some(token.as_str())).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         assert_eq!(body, "");

@@ -236,7 +236,10 @@ impl RedfishTree for MockTree {
         }
     }
 
-    fn patch(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, RedfishErr> {
+    fn patch(&mut self, uri: &str, req: serde_json::Value, username: Option<&str>) -> Result<&dyn RedfishNode, RedfishErr> {
+        if username.is_none() {
+            return Err(RedfishErr::Unauthorized);
+        }
         match self.resources.get_mut(uri) {
             None => Err(RedfishErr::NotFound),
             Some(resource) => match resource.patch {

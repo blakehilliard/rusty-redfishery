@@ -65,8 +65,10 @@ pub trait RedfishTree {
 
     // Patch a resource.
     // Return the patched resource on success, or Error.
-    // TODO: pass in username like get()
-    fn patch(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, RedfishErr>;
+    // If the request successfully provided credentials as a user, the username is given.
+    // If the request did not attempt to authenticate, the username is None.
+    // If the requested URI requires authentication, and the username is None, you must return RedfishErr::Unauthorized.
+    fn patch(&mut self, uri: &str, req: serde_json::Value, username: Option<&str>) -> Result<&dyn RedfishNode, RedfishErr>;
 
     fn get_collection_types(&self) -> &[RedfishCollectionType];
 
@@ -217,7 +219,17 @@ async fn patcher(
     }
     let uri = "/redfish/".to_owned() + &path;
     let mut tree = state.tree.lock().unwrap();
-    match tree.patch(uri.as_str(), payload) {
+    let user = match headers.get("x-auth-token") {
+        None => None,
+        Some(token) => match get_token_user(token.to_str().unwrap().to_string(), &state) {
+            None => {
+                return StatusCode::UNAUTHORIZED.into_response();
+            },
+            Some(user_ptr) => Some(user_ptr.clone()),
+        },
+    };
+
+    match tree.patch(uri.as_str(), payload, user.as_deref()) {
         Ok(node) => get_node_get_response(node),
         Err(error) => get_error_response(error),
     }
