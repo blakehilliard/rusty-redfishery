@@ -209,7 +209,10 @@ impl RedfishTree for MockTree {
         }
     }
 
-    fn delete(&mut self, uri: &str) -> Result<(), RedfishErr> {
+    fn delete(&mut self, uri: &str, username: Option<&str>) -> Result<(), RedfishErr> {
+        if username.is_none() {
+            return Err(RedfishErr::Unauthorized);
+        }
         match self.resources.get(uri) {
             None => match self.collections.get(uri) {
                 Some(collection) => Err(RedfishErr::MethodNotAllowed(collection.get_allowed_methods())),

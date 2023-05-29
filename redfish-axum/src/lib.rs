@@ -58,8 +58,10 @@ pub trait RedfishTree {
 
     // Delete a resource, given its URI.
     // Return Ok after it has been deleted, or Error if it cannot be deleted.
-    // TODO: pass in username like get()
-    fn delete(&mut self, uri: &str) -> Result<(), RedfishErr>;
+    // If the request successfully provided credentials as a user, the username is given.
+    // If the request did not attempt to authenticate, the username is None.
+    // If the requested URI requires authentication, and the username is None, you must return RedfishErr::Unauthorized.
+    fn delete(&mut self, uri: &str, username: Option<&str>) -> Result<(), RedfishErr>;
 
     // Patch a resource.
     // Return the patched resource on success, or Error.
@@ -138,7 +140,17 @@ async fn deleter(
     }
     let uri = "/redfish/".to_owned() + &path;
     let mut tree = state.tree.lock().unwrap();
-    match tree.delete(uri.as_str()) {
+    let user = match headers.get("x-auth-token") {
+        None => None,
+        Some(token) => match get_token_user(token.to_str().unwrap().to_string(), &state) {
+            None => {
+                return StatusCode::UNAUTHORIZED.into_response();
+            },
+            Some(user_ptr) => Some(user_ptr.clone()),
+        },
+    };
+
+    match tree.delete(uri.as_str(), user.as_deref()) {
         Ok(_) => (
             StatusCode::NO_CONTENT,
             [("Cache-Control", "no-cache")],

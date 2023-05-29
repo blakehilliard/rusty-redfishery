@@ -301,8 +301,13 @@ mod tests {
         )
     }
 
-    async fn delete(app: &mut NormalizePath<Router>, uri: &str) -> Response {
-        let req = Request::delete(uri).body(Body::empty()).unwrap();
+    async fn delete(app: &mut NormalizePath<Router>, uri: &str, token: Option<&str>) -> Response {
+        let mut req = Request::delete(uri);
+        if let Some(token) = token {
+            let headers = req.headers_mut().unwrap();
+            headers.insert("x-auth-token", HeaderValue::from_str(token).unwrap());
+        }
+        let req = req.body(Body::empty()).unwrap();
         app.ready().await.unwrap().call(req).await.unwrap()
     }
 
@@ -475,6 +480,16 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn delete_missing_token() {
+        let mut app = app();
+        let response = delete(&mut app, "/redfish/v1", None).await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        let body = std::str::from_utf8(&body).unwrap();
+        assert_eq!(body, "");
+    }
+
+    #[tokio::test]
     async fn session_service() {
         let mut app = app();
         let (token, _) = login(&mut app).await;
@@ -583,7 +598,8 @@ mod tests {
     #[tokio::test]
     async fn delete_not_allowed() {
         let mut app = app();
-        let response = delete(&mut app, "/redfish/v1").await;
+        let (token, _) = login(&mut app).await;
+        let response = delete(&mut app, "/redfish/v1", Some(token.as_str())).await;
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
         assert_eq!(get_header(&response, "allow"), "GET,HEAD");
     }
@@ -696,7 +712,7 @@ mod tests {
             "Members@odata.count": 2,
         }));
 
-        let response = delete(&mut app, "/redfish/v1/SessionService/Sessions/1").await;
+        let response = delete(&mut app, "/redfish/v1/SessionService/Sessions/1", Some(token.as_str())).await;
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         assert_eq!(response.headers().get("cache-control").unwrap().to_str().unwrap(), "no-cache");
 
@@ -748,7 +764,8 @@ mod tests {
     #[tokio::test]
     async fn delete_not_found() {
         let mut app = app();
-        let response = delete(&mut app, "/redfish/v1/notfound").await;
+        let (token, _) = login(&mut app).await;
+        let response = delete(&mut app, "/redfish/v1/notfound", Some(token.as_str())).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         assert_eq!(body, "");
