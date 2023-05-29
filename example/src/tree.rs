@@ -185,8 +185,10 @@ impl RedfishTree for MockTree {
         Err(RedfishErr::NotFound)
     }
 
-    //fn create(&mut self, uri: &str, req: serde_json::Value, username: Option<&str>) -> Result<&dyn RedfishNode, RedfishErr> {
-    fn create(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, RedfishErr> {
+    fn create(&mut self, uri: &str, req: serde_json::Value, username: Option<&str>) -> Result<&dyn RedfishNode, RedfishErr> {
+        if uri != "/redfish/v1/SessionService/Sessions" && username.is_none() {
+            return Err(RedfishErr::Unauthorized);
+        }
         match self.collections.get_mut(uri) {
             None => match self.resources.get(uri) {
                 Some(resource) => Err(RedfishErr::MethodNotAllowed(resource.get_allowed_methods())),

@@ -289,7 +289,7 @@ mod tests {
 
     async fn login(app: &mut NormalizePath<Router>) -> (String, String) {
         let data = json!({"UserName": "Obiwan", "Password": "n/a"});
-        let response = post(app, "/redfish/v1/SessionService/Sessions", data).await;
+        let response = post(app, "/redfish/v1/SessionService/Sessions", data, None).await;
         assert_eq!(response.status(), StatusCode::CREATED);
         assert_eq!(get_header(&response, "OData-Version"), "4.0");
         assert_eq!(get_header(&response, "Location"), "/redfish/v1/SessionService/Sessions/2");
@@ -306,9 +306,14 @@ mod tests {
         app.ready().await.unwrap().call(req).await.unwrap()
     }
 
-    async fn post(app: &mut NormalizePath<Router>, uri: &str, req: serde_json::Value) -> Response {
+    async fn post(app: &mut NormalizePath<Router>, uri: &str, req: serde_json::Value, token: Option<&str>) -> Response {
         let body = Body::from(serde_json::to_vec(&req).unwrap());
-        let req = Request::post(uri).header("Content-Type", "application/json").body(body).unwrap();
+        let mut req = Request::post(uri).header("Content-Type", "application/json");
+        if let Some(token) = token {
+            let headers = req.headers_mut().unwrap();
+            headers.insert("x-auth-token", HeaderValue::from_str(token).unwrap());
+        }
+        let req = req.body(body).unwrap();
         app.ready().await.unwrap().call(req).await.unwrap()
     }
 
@@ -450,9 +455,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn missing_token() {
+    async fn get_missing_token() {
         let mut app = app();
         let response = get(&mut app, "/redfish/v1/SessionService", None).await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        let body = std::str::from_utf8(&body).unwrap();
+        assert_eq!(body, "");
+    }
+
+    #[tokio::test]
+    async fn post_missing_token() {
+        let mut app = app();
+        let response = post(&mut app, "/redfish/v1", json!({}), None).await;
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         let body = std::str::from_utf8(&body).unwrap();
@@ -576,8 +591,9 @@ mod tests {
     #[tokio::test]
     async fn post_not_allowed() {
         let mut app = app();
+        let (token, _) = login(&mut app).await;
         let data = json!({});
-        let response = post(&mut app, "/redfish/v1", data).await;
+        let response = post(&mut app, "/redfish/v1", data, Some(token.as_str())).await;
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
         assert_eq!(get_header(&response, "allow"), "GET,HEAD");
     }
@@ -630,7 +646,7 @@ mod tests {
     async fn post_and_delete_session() {
         let mut app = app();
         let data = json!({"UserName": "Obiwan", "Password": "n/a"});
-        let response = post(&mut app, "/redfish/v1/SessionService/Sessions", data).await;
+        let response = post(&mut app, "/redfish/v1/SessionService/Sessions", data, None).await;
         assert_eq!(response.status(), StatusCode::CREATED);
         assert_eq!(get_header(&response, "OData-Version"), "4.0");
         assert_eq!(get_header(&response, "Location"), "/redfish/v1/SessionService/Sessions/2");
@@ -713,7 +729,7 @@ mod tests {
     async fn post_to_members() {
         let mut app = app();
         let data = json!({"UserName": "Obiwan", "Password": "n/a"});
-        let response = post(&mut app, "/redfish/v1/SessionService/Sessions/Members", data).await;
+        let response = post(&mut app, "/redfish/v1/SessionService/Sessions/Members", data, None).await;
         assert_eq!(response.status(), StatusCode::CREATED);
         assert_eq!(get_header(&response, "OData-Version"), "4.0");
         assert_eq!(get_header(&response, "Location"), "/redfish/v1/SessionService/Sessions/2");
@@ -722,7 +738,8 @@ mod tests {
     #[tokio::test]
     async fn post_not_found() {
         let mut app = app();
-        let response = post(&mut app, "/redfish/v1/notfound", json!({})).await;
+        let (token, _) = login(&mut app).await;
+        let response = post(&mut app, "/redfish/v1/notfound", json!({}), Some(token.as_str())).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         assert_eq!(body, "");

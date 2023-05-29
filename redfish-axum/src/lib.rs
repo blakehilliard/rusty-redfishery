@@ -51,9 +51,10 @@ pub trait RedfishTree {
 
     // Create a resource, given the collction URI and JSON input.
     // Return Ok(RedfishNode) of the new resource, or Err.
-    // TODO: pass in username like get()
-    //fn create(&mut self, uri: &str, req: serde_json::Value, username: Option<&str>) -> Result<&dyn RedfishNode, RedfishErr>;
-    fn create(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, RedfishErr>;
+    // If the request successfully provided credentials as a user, the username is given.
+    // If the request did not attempt to authenticate, the username is None.
+    // If the requested URI requires authentication, and the username is None, you must return RedfishErr::Unauthorized.
+    fn create(&mut self, uri: &str, req: serde_json::Value, username: Option<&str>) -> Result<&dyn RedfishNode, RedfishErr>;
 
     // Delete a resource, given its URI.
     // Return Ok after it has been deleted, or Error if it cannot be deleted.
@@ -149,7 +150,7 @@ async fn deleter(
 async fn poster(
     headers: HeaderMap,
     Path(path): Path<String>,
-    State(mut state): State<AppState>,
+    State(state): State<AppState>,
     Json(payload): Json<serde_json::Value>,
 ) -> Response {
     if let Some(odata_version) = headers.get("odata-version") {
@@ -164,19 +165,17 @@ async fn poster(
     }
 
     let mut tree = state.tree.lock().unwrap();
-    /*
     let user = match headers.get("x-auth-token") {
         None => None,
-        Some(token) => match get_token_user(token.to_str().unwrap().to_string(), &state.sessions) {
+        Some(token) => match get_token_user(token.to_str().unwrap().to_string(), &state) {
             None => {
                 return StatusCode::UNAUTHORIZED.into_response();
             },
             Some(user_ptr) => Some(user_ptr.clone()),
         },
-    };*/
+    };
 
-    //match tree.create(uri.as_str(), payload, user.as_deref()) {
-    match tree.create(uri.as_str(), payload) {
+    match tree.create(uri.as_str(), payload, user.as_deref()) {
         Ok(node) => {
             let mut additional_headers = HeaderMap::new();
             // TODO: Would it be better to inspect node to see if it's a Session?
