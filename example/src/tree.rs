@@ -172,7 +172,10 @@ impl MockTree {
 }
 
 impl RedfishTree for MockTree {
-    fn get(&self, uri: &str) -> Result<&dyn RedfishNode, RedfishErr> {
+    fn get(&self, uri: &str, username: Option<&str>) -> Result<&dyn RedfishNode, RedfishErr> {
+        if uri != "/redfish/v1" && username.is_none() {
+            return Err(RedfishErr::Unauthorized);
+        }
         if let Some(resource) = self.resources.get(uri) {
             return Ok(resource);
         }
@@ -182,6 +185,7 @@ impl RedfishTree for MockTree {
         Err(RedfishErr::NotFound)
     }
 
+    //fn create(&mut self, uri: &str, req: serde_json::Value, username: Option<&str>) -> Result<&dyn RedfishNode, RedfishErr> {
     fn create(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, RedfishErr> {
         match self.collections.get_mut(uri) {
             None => match self.resources.get(uri) {
@@ -197,7 +201,7 @@ impl RedfishTree for MockTree {
                     // Update members of collection.
                     collection.members.push(member_uri.clone());
                     // Return new resource.
-                    self.get(member_uri.as_str())
+                    Ok(self.resources.get(&member_uri).unwrap())
                 }
             },
         }

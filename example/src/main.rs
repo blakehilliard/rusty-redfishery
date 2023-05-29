@@ -740,7 +740,8 @@ mod tests {
     #[tokio::test]
     async fn get_not_found() {
         let mut app = app();
-        let response = get(&mut app, "/redfish/v1/notfound", None).await;
+        let (token, _) = login(&mut app).await;
+        let response = get(&mut app, "/redfish/v1/notfound", Some(token.as_str())).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         assert_eq!(body, "");
@@ -749,7 +750,8 @@ mod tests {
     #[tokio::test]
     async fn head_not_found() {
         let mut app = app();
-        let req = Request::head("/redfish/v1/notfound").body(Body::empty()).unwrap();
+        let (token, _) = login(&mut app).await;
+        let req = Request::head("/redfish/v1/notfound").header("x-auth-token", token).body(Body::empty()).unwrap();
         let response = app.ready().await.unwrap().call(req).await.unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();

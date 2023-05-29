@@ -43,19 +43,26 @@ pub trait RedfishNode {
 
 // TODO: Should all these methods be async?
 pub trait RedfishTree {
-    // Return Some(RedfishNode) matching the given URI, or None if it doesn't exist
-    fn get(&self, uri: &str) -> Result<&dyn RedfishNode, RedfishErr>;
+    // Return Ok(RedfishNode) at the given URI, or a RedfishErr.
+    // If the request successfully provided credentials as a user, the username is given.
+    // If the request did not attempt to authenticate, the username is None.
+    // If the requested URI requires authentication, and the username is None, you must return RedfishErr::Unauthorized.
+    fn get(&self, uri: &str, username: Option<&str>) -> Result<&dyn RedfishNode, RedfishErr>;
 
     // Create a resource, given the collction URI and JSON input.
     // Return Ok(RedfishNode) of the new resource, or Err.
+    // TODO: pass in username like get()
+    //fn create(&mut self, uri: &str, req: serde_json::Value, username: Option<&str>) -> Result<&dyn RedfishNode, RedfishErr>;
     fn create(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, RedfishErr>;
 
     // Delete a resource, given its URI.
     // Return Ok after it has been deleted, or Error if it cannot be deleted.
+    // TODO: pass in username like get()
     fn delete(&mut self, uri: &str) -> Result<(), RedfishErr>;
 
     // Patch a resource.
     // Return the patched resource on success, or Error.
+    // TODO: pass in username like get()
     fn patch(&mut self, uri: &str, req: serde_json::Value) -> Result<&dyn RedfishNode, RedfishErr>;
 
     fn get_collection_types(&self) -> &[RedfishCollectionType];
@@ -63,10 +70,11 @@ pub trait RedfishTree {
     fn get_resource_types(&self) -> &[RedfishResourceType];
 }
 
+// TODO: Better way to declare tree type???
 pub fn app<T: RedfishTree + Send + Sync + 'static>(tree: T) -> NormalizePath<Router> {
     let state = AppState {
         tree: Arc::new(Mutex::new(tree)),
-        sessions: HashMap::new(),
+        sessions: Arc::new(Mutex::new(HashMap::new())),
     };
 
     let app = Router::new()
@@ -84,11 +92,10 @@ pub fn app<T: RedfishTree + Send + Sync + 'static>(tree: T) -> NormalizePath<Rou
 }
 
 //FIXME: Figure out right kind of mutex: https://docs.rs/tokio/1.25.0/tokio/sync/struct.Mutex.html#which-kind-of-mutex-should-you-use
-//TODO: Is it necessary to wrap the tree in this struct at all?
 #[derive(Clone)]
 struct AppState {
     tree: Arc<Mutex<dyn RedfishTree + Send>>,
-    sessions: HashMap<String, String>,
+    sessions: Arc<Mutex<HashMap<String, String>>>,
 }
 
 async fn getter(
@@ -103,17 +110,16 @@ async fn getter(
     }
     let uri = "/redfish/".to_owned() + &path;
     let tree = state.tree.lock().unwrap();
-    /*
-    let mut session_id: Option<String> = None;
-    if let Some(token) = headers.get("x-auth-token") {
-        session_id = get_token_session(token);
-        if session_id.is_none() {
-            return StatusCode::UNAUTHORIZED.into_response();
-        }
-    }
-    match tree.get(uri.as_str(), session_id) {
-    */
-    match tree.get(uri.as_str()) {
+    let user = match headers.get("x-auth-token") {
+        None => None,
+        Some(token) => match get_token_user(token.to_str().unwrap().to_string(), &state) {
+            None => {
+                return StatusCode::UNAUTHORIZED.into_response();
+            },
+            Some(user_ptr) => Some(user_ptr.clone()), // TODO: Fix wasteful clone
+        },
+    };
+    match tree.get(uri.as_str(), user.as_deref()) {
         Ok(node) => get_node_get_response(node),
         Err(error) => get_error_response(error),
     }
@@ -158,13 +164,26 @@ async fn poster(
     }
 
     let mut tree = state.tree.lock().unwrap();
+    /*
+    let user = match headers.get("x-auth-token") {
+        None => None,
+        Some(token) => match get_token_user(token.to_str().unwrap().to_string(), &state.sessions) {
+            None => {
+                return StatusCode::UNAUTHORIZED.into_response();
+            },
+            Some(user_ptr) => Some(user_ptr.clone()),
+        },
+    };*/
+
+    //match tree.create(uri.as_str(), payload, user.as_deref()) {
     match tree.create(uri.as_str(), payload) {
         Ok(node) => {
             let mut additional_headers = HeaderMap::new();
             // TODO: Would it be better to inspect node to see if it's a Session?
             if uri == "/redfish/v1/SessionService/Sessions" {
                 let token = Uuid::new_v4().as_simple().to_string();
-                state.sessions.insert(token.clone(), String::from(node.get_uri()));
+                let user = node.get_body().as_object().unwrap().get("UserName").unwrap().as_str().unwrap().to_string();
+                state.sessions.lock().unwrap().insert(token.clone(), user);
                 let header_val = HeaderValue::from_str(token.as_str()).expect("FIXME");
                 additional_headers.insert("x-auth-token", header_val);
             }
@@ -230,7 +249,7 @@ async fn get_odata_service_doc(
     State(state): State<AppState>,
 ) -> Response {
     let tree = state.tree.lock().unwrap();
-    let service_root = tree.get("/redfish/v1");
+    let service_root = tree.get("/redfish/v1", None);
     get_non_node_json_response(
         StatusCode::OK,
         get_odata_service_document(service_root.unwrap().get_body().as_object().unwrap()),
@@ -315,5 +334,12 @@ fn get_error_response(error: RedfishErr) -> Response {
             [("OData-Version", "4.0")],
             [("Cache-Control", "no-cache")],
         ).into_response(),
+    }
+}
+
+fn get_token_user(token: String, state: &AppState) -> Option<String> {
+    match state.sessions.lock().unwrap().get(&token) {
+        None => None,
+        Some(username) => Some(username.clone())
     }
 }
