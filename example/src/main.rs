@@ -135,6 +135,7 @@ fn get_mock_tree() -> MockTree {
         Some(String::from("/redfish/v1/AccountService/Accounts")),
         json!({
             "@Redfish.WriteableProperties": ["Password"],
+            "AccountTypes": ["Redfish"],
             "Links": {
                 "Role": {
                     "@odata.id": "/redfish/v1/AccountService/Roles/Administrator"
