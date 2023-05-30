@@ -78,7 +78,7 @@ fn get_mock_tree() -> MockTree {
     tree.add_resource(RedfishResource::new(
         "/redfish/v1/SessionService",
         String::from("SessionService"),
-        RedfishResourceSchemaVersion::new(1, 1, 9),
+        RedfishResourceSchemaVersion::new(1, 1, 8),
         String::from("SessionService"),
         String::from("Session Service"),
         None,
@@ -424,7 +424,7 @@ mod tests {
   </edmx:Reference>
   <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/SessionService_v1.xml">
     <edmx:Include Namespace="SessionService" />
-    <edmx:Include Namespace="SessionService.v1_1_9" />
+    <edmx:Include Namespace="SessionService.v1_1_8" />
   </edmx:Reference>
   <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/AccountService_v1.xml">
     <edmx:Include Namespace="AccountService" />
@@ -498,12 +498,12 @@ mod tests {
             &mut app, "/redfish/v1/SessionService/", StatusCode::OK, Some(token.as_str()),
             &[
                 ("allow", "GET,HEAD,PATCH"),
-                ("link", "<https://redfish.dmtf.org/schemas/v1/SessionService.v1_1_9.json>; rel=describedby"),
+                ("link", "<https://redfish.dmtf.org/schemas/v1/SessionService.v1_1_8.json>; rel=describedby"),
             ],
         ).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService",
-            "@odata.type": "#SessionService.v1_1_9.SessionService",
+            "@odata.type": "#SessionService.v1_1_8.SessionService",
             "@Redfish.WriteableProperties": ["SessionTimeout"],
             "Id": "SessionService",
             "Name": "Session Service",
@@ -634,12 +634,12 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(get_header(&response, "allow"), "GET,HEAD,PATCH");
         assert_eq!(get_header(&response, "cache-control"), "no-cache");
-        assert_eq!(get_header(&response, "Link"), "<https://redfish.dmtf.org/schemas/v1/SessionService.v1_1_9.json>; rel=describedby");
+        assert_eq!(get_header(&response, "Link"), "<https://redfish.dmtf.org/schemas/v1/SessionService.v1_1_8.json>; rel=describedby");
 
         let body = get_response_json(response).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService",
-            "@odata.type": "#SessionService.v1_1_9.SessionService",
+            "@odata.type": "#SessionService.v1_1_8.SessionService",
             "@Redfish.WriteableProperties": ["SessionTimeout"],
             "Id": "SessionService",
             "Name": "Session Service",
@@ -650,7 +650,7 @@ mod tests {
         let body = jget(&mut app, "/redfish/v1/SessionService/", StatusCode::OK, Some(token.as_str()), &[("allow", "GET,HEAD,PATCH")]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService",
-            "@odata.type": "#SessionService.v1_1_9.SessionService",
+            "@odata.type": "#SessionService.v1_1_8.SessionService",
             "@Redfish.WriteableProperties": ["SessionTimeout"],
             "Id": "SessionService",
             "Name": "Session Service",
