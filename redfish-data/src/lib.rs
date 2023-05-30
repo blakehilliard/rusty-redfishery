@@ -179,6 +179,9 @@ pub fn get_odata_metadata_document(collection_types: &[RedfishCollectionType], r
             service_root_type = Some(resource_type);
         }
     }
+    body.push_str("  <edmx:Reference Uri=\"http://redfish.dmtf.org/schemas/v1/RedfishExtensions_v1.xml\">\n");
+    body.push_str("    <edmx:Include Namespace=\"RedfishExtensions.v1_0_0\" Alias=\"Redfish\"/>\n");
+    body.push_str("  </edmx:Reference>\n");
     if service_root_type.is_some() {
         body.push_str("  <edmx:DataServices>\n");
         body.push_str("    <Schema xmlns=\"http://docs.oasis-open.org/odata/ns/edm\" Namespace=\"Service\">\n");
@@ -291,6 +294,9 @@ mod tests {
   <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/ServiceRoot_v1.xml">
     <edmx:Include Namespace="ServiceRoot" />
     <edmx:Include Namespace="ServiceRoot.v1_15_0" />
+  </edmx:Reference>
+  <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/RedfishExtensions_v1.xml">
+    <edmx:Include Namespace="RedfishExtensions.v1_0_0" Alias="Redfish"/>
   </edmx:Reference>
   <edmx:DataServices>
     <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Service">

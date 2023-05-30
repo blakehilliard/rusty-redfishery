@@ -438,6 +438,9 @@ mod tests {
     <edmx:Include Namespace="Role" />
     <edmx:Include Namespace="Role.v1_3_1" />
   </edmx:Reference>
+  <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/RedfishExtensions_v1.xml">
+    <edmx:Include Namespace="RedfishExtensions.v1_0_0" Alias="Redfish"/>
+  </edmx:Reference>
   <edmx:DataServices>
     <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Service">
       <EntityContainer Name="Service" Extends="ServiceRoot.v1_15_0.ServiceContainer" />
