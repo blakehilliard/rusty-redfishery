@@ -246,8 +246,8 @@ mod tests {
     async fn get(app: &mut NormalizePath<Router>, uri: &str, token: Option<&str>) -> Response {
         let mut req = Request::get(uri);
         if let Some(token) = token {
-            let headers = req.headers_mut().expect("FIXME");
-            headers.insert("x-auth-token", HeaderValue::from_str(token).expect("FIXME"));
+            let headers = req.headers_mut().unwrap();
+            headers.insert("x-auth-token", HeaderValue::from_str(token).unwrap());
         }
         let req = req.body(Body::empty()).unwrap();
         app.ready().await.unwrap().call(req).await.unwrap()
@@ -318,6 +318,11 @@ mod tests {
         }
         let req = req.body(body).unwrap();
         app.ready().await.unwrap().call(req).await.unwrap()
+    }
+
+    fn validate_unauthorized(response: &Response) {
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(get_header(&response, "www-authenticate"), "Basic realm=\"simple\"");
     }
 
     #[tokio::test]
@@ -454,7 +459,7 @@ mod tests {
     async fn get_missing_token() {
         let mut app = app();
         let response = get(&mut app, "/redfish/v1/SessionService", None).await;
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        validate_unauthorized(&response);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         let body = std::str::from_utf8(&body).unwrap();
         assert_eq!(body, "");
@@ -464,7 +469,7 @@ mod tests {
     async fn post_missing_token() {
         let mut app = app();
         let response = post(&mut app, "/redfish/v1", json!({}), None).await;
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        validate_unauthorized(&response);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         let body = std::str::from_utf8(&body).unwrap();
         assert_eq!(body, "");
@@ -474,7 +479,7 @@ mod tests {
     async fn delete_missing_token() {
         let mut app = app();
         let response = delete(&mut app, "/redfish/v1", None).await;
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        validate_unauthorized(&response);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         let body = std::str::from_utf8(&body).unwrap();
         assert_eq!(body, "");
@@ -484,7 +489,7 @@ mod tests {
     async fn patch_missing_token() {
         let mut app = app();
         let response = patch(&mut app, "/redfish/v1", json!({}), None).await;
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        validate_unauthorized(&response);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         let body = std::str::from_utf8(&body).unwrap();
         assert_eq!(body, "");
@@ -771,7 +776,7 @@ mod tests {
 
         // Ensure token of deleted session does not work
         let response = get(&mut app, "/redfish/v1/SessionService/Sessions", Some(token1.as_str())).await;
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        validate_unauthorized(&response);
     }
 
     #[tokio::test]

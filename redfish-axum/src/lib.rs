@@ -125,7 +125,7 @@ async fn getter(
         None => None,
         Some(token) => match get_token_user(token.to_str().unwrap().to_string(), &state) {
             None => {
-                return StatusCode::UNAUTHORIZED.into_response();
+                return get_error_response(RedfishErr::Unauthorized);
             },
             Some(user_ptr) => Some(user_ptr.clone()), // TODO: Fix wasteful clone
         },
@@ -152,7 +152,7 @@ async fn deleter(
         None => None,
         Some(token) => match get_token_user(token.to_str().unwrap().to_string(), &state) {
             None => {
-                return StatusCode::UNAUTHORIZED.into_response();
+                return get_error_response(RedfishErr::Unauthorized);
             },
             Some(user_ptr) => Some(user_ptr.clone()),
         },
@@ -195,7 +195,7 @@ async fn poster(
         None => None,
         Some(token) => match get_token_user(token.to_str().unwrap().to_string(), &state) {
             None => {
-                return StatusCode::UNAUTHORIZED.into_response();
+                return get_error_response(RedfishErr::Unauthorized);
             },
             Some(user_ptr) => Some(user_ptr.clone()),
         },
@@ -240,7 +240,7 @@ async fn patcher(
         None => None,
         Some(token) => match get_token_user(token.to_str().unwrap().to_string(), &state) {
             None => {
-                return StatusCode::UNAUTHORIZED.into_response();
+                return get_error_response(RedfishErr::Unauthorized);
             },
             Some(user_ptr) => Some(user_ptr.clone()),
         },
@@ -312,7 +312,7 @@ fn bad_odata_version_response() -> Response {
 fn add_described_by_header(headers: &mut HeaderMap, node: &dyn RedfishNode) -> () {
     if let Some(described_by) = node.described_by() {
         let val = format!("<{}>; rel=describedby", described_by);
-        let val = HeaderValue::from_str(val.as_str()).expect("FIXME");
+        let val = HeaderValue::from_str(val.as_str()).unwrap();
         headers.insert(header::LINK, val);
     }
 }
@@ -331,7 +331,7 @@ fn get_node_created_response(node: &dyn RedfishNode, additional_headers: HeaderM
     let mut headers = get_standard_headers(node_to_allow(node).as_str());
     headers.extend(additional_headers);
     add_described_by_header(&mut headers, node);
-    headers.insert(header::LOCATION, HeaderValue::from_str(node.get_uri()).expect("FIXME"));
+    headers.insert(header::LOCATION, HeaderValue::from_str(node.get_uri()).unwrap());
     JsonResponse::new(
         StatusCode::CREATED,
         headers,
@@ -349,7 +349,7 @@ fn get_non_node_json_response(status: StatusCode, data: serde_json::Value, allow
 
 fn get_standard_headers(allow: &str) -> HeaderMap {
     let mut headers = HeaderMap::new();
-    headers.insert(header::ALLOW, HeaderValue::from_str(allow).expect("FIXME"));
+    headers.insert(header::ALLOW, HeaderValue::from_str(allow).unwrap());
     headers.insert(HeaderName::from_static("odata-version"), HeaderValue::from_static("4.0"));
     headers.insert(HeaderName::from_static("cache-control"), HeaderValue::from_static("no-cache"));
     headers
@@ -361,12 +361,13 @@ fn get_error_response(error: RedfishErr) -> Response {
             StatusCode::NOT_FOUND,
             // FIXME: Avoid repeating this everywhere
             [("OData-Version", "4.0")],
-            [("Cache-Control", "no-cache")]
+            [("Cache-Control", "no-cache")],
         ).into_response(),
         RedfishErr::Unauthorized => (
             StatusCode::UNAUTHORIZED,
             [("OData-Version", "4.0")],
-            [("Cache-Control", "no-cache")]
+            [("Cache-Control", "no-cache")],
+            [("www-authenticate", "Basic realm=\"simple\"")], // TODO: Customize?
         ).into_response(),
         RedfishErr::MethodNotAllowed(allowed) => (
             StatusCode::METHOD_NOT_ALLOWED,
