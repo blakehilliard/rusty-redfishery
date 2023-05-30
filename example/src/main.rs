@@ -599,29 +599,42 @@ mod tests {
     async fn delete_not_allowed() {
         let mut app = app();
         let (token, _) = login(&mut app).await;
+
         let response = delete(&mut app, "/redfish/v1", Some(token.as_str())).await;
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
         assert_eq!(get_header(&response, "allow"), "GET,HEAD");
+
+        let response = delete(&mut app, "/redfish/v1/SessionService/Sessions", Some(token.as_str())).await;
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(get_header(&response, "allow"), "GET,HEAD,POST");
     }
 
     #[tokio::test]
     async fn post_not_allowed() {
         let mut app = app();
         let (token, _) = login(&mut app).await;
-        let data = json!({});
-        let response = post(&mut app, "/redfish/v1", data, Some(token.as_str())).await;
+
+        let response = post(&mut app, "/redfish/v1", json!({}), Some(token.as_str())).await;
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
         assert_eq!(get_header(&response, "allow"), "GET,HEAD");
+
+        let response = post(&mut app, "/redfish/v1/SessionService", json!({}), Some(token.as_str())).await;
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(get_header(&response, "allow"), "GET,HEAD,PATCH");
     }
 
     #[tokio::test]
     async fn patch_not_allowed() {
         let mut app = app();
         let (token, _) = login(&mut app).await;
-        let data = json!({});
-        let response = patch(&mut app, "/redfish/v1", data, Some(token.as_str())).await;
+
+        let response = patch(&mut app, "/redfish/v1", json!({}), Some(token.as_str())).await;
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
         assert_eq!(get_header(&response, "allow"), "GET,HEAD");
+
+        let response = patch(&mut app, "/redfish/v1/SessionService/Sessions", json!({}), Some(token.as_str())).await;
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(get_header(&response, "allow"), "GET,HEAD,POST");
     }
 
     #[tokio::test]

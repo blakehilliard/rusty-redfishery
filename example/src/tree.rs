@@ -241,7 +241,10 @@ impl RedfishTree for MockTree {
             return Err(RedfishErr::Unauthorized);
         }
         match self.resources.get_mut(uri) {
-            None => Err(RedfishErr::NotFound),
+            None => match self.collections.get(uri) {
+                Some(collection) => Err(RedfishErr::MethodNotAllowed(collection.get_allowed_methods())),
+                None => Err(RedfishErr::NotFound),
+            },
             Some(resource) => match resource.patch {
                 None => Err(RedfishErr::MethodNotAllowed(resource.get_allowed_methods())),
                 Some(patch) => {
