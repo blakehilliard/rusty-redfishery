@@ -96,22 +96,8 @@ fn get_mock_tree() -> MockTree {
         "/redfish/v1/SessionService/Sessions",
         String::from("SessionCollection"),
         String::from("Session Collection"),
-        vec![String::from("/redfish/v1/SessionService/Sessions/1")],
+        Vec::new(),
         Some(create_session),
-    ));
-    tree.add_resource(RedfishResource::new(
-        "/redfish/v1/SessionService/Sessions/1",
-        String::from("Session"),
-        RedfishResourceSchemaVersion::new(1, 6, 0),
-        String::from("Session"),
-        String::from("Session 1"),
-        Some(|_| { Ok(()) }),
-        None,
-        Some(String::from("/redfish/v1/SessionService/Sessions")),
-        json!({
-            "UserName": "admin",
-            "Password": serde_json::Value::Null,
-        }),
     ));
     tree.add_resource(RedfishResource::new(
         "/redfish/v1/AccountService",
@@ -292,7 +278,7 @@ mod tests {
         let response = post(app, "/redfish/v1/SessionService/Sessions", data, None).await;
         assert_eq!(response.status(), StatusCode::CREATED);
         assert_eq!(get_header(&response, "OData-Version"), "4.0");
-        assert_eq!(get_header(&response, "Location"), "/redfish/v1/SessionService/Sessions/2");
+        assert_eq!(get_header(&response, "Location"), "/redfish/v1/SessionService/Sessions/1");
         assert_eq!(get_header(&response, "cache-control"), "no-cache");
         assert_eq!(get_header(&response, "Link"), "<https://redfish.dmtf.org/schemas/v1/Session.v1_6_0.json>; rel=describedby");
         (
@@ -439,10 +425,6 @@ mod tests {
     <edmx:Include Namespace="SessionService" />
     <edmx:Include Namespace="SessionService.v1_1_9" />
   </edmx:Reference>
-  <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/Session_v1.xml">
-    <edmx:Include Namespace="Session" />
-    <edmx:Include Namespace="Session.v1_6_0" />
-  </edmx:Reference>
   <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/AccountService_v1.xml">
     <edmx:Include Namespace="AccountService" />
     <edmx:Include Namespace="AccountService.v1_12_0" />
@@ -543,9 +525,8 @@ mod tests {
             "Name": "Session Collection",
             "Members" : [
                 {"@odata.id": "/redfish/v1/SessionService/Sessions/1"},
-                {"@odata.id": "/redfish/v1/SessionService/Sessions/2"},
             ],
-            "Members@odata.count": 2,
+            "Members@odata.count": 1,
         }));
     }
 
@@ -677,6 +658,17 @@ mod tests {
     #[tokio::test]
     async fn post_and_delete_session() {
         let mut app = app();
+
+        // Create session 1
+        let data = json!({"UserName": "admin", "Password": "admin"});
+        let response = post(&mut app, "/redfish/v1/SessionService/Sessions", data, None).await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        assert_eq!(get_header(&response, "OData-Version"), "4.0");
+        assert_eq!(get_header(&response, "Location"), "/redfish/v1/SessionService/Sessions/1");
+        assert_eq!(get_header(&response, "cache-control"), "no-cache");
+        assert_eq!(get_header(&response, "Link"), "<https://redfish.dmtf.org/schemas/v1/Session.v1_6_0.json>; rel=describedby");
+
+        // Create session 2
         let data = json!({"UserName": "Obiwan", "Password": "n/a"});
         let response = post(&mut app, "/redfish/v1/SessionService/Sessions", data, None).await;
         assert_eq!(response.status(), StatusCode::CREATED);
@@ -696,6 +688,7 @@ mod tests {
             "Password": serde_json::Value::Null,
         }));
 
+        // GET the sessions and collection
         let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/1", StatusCode::OK, Some(token.as_str()), &[("allow", "GET,HEAD,DELETE")]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions/1",
@@ -728,6 +721,7 @@ mod tests {
             "Members@odata.count": 2,
         }));
 
+        // DELETE a session
         let response = delete(&mut app, "/redfish/v1/SessionService/Sessions/1", Some(token.as_str())).await;
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         assert_eq!(response.headers().get("cache-control").unwrap().to_str().unwrap(), "no-cache");
@@ -764,7 +758,7 @@ mod tests {
         let response = post(&mut app, "/redfish/v1/SessionService/Sessions/Members", data, None).await;
         assert_eq!(response.status(), StatusCode::CREATED);
         assert_eq!(get_header(&response, "OData-Version"), "4.0");
-        assert_eq!(get_header(&response, "Location"), "/redfish/v1/SessionService/Sessions/2");
+        assert_eq!(get_header(&response, "Location"), "/redfish/v1/SessionService/Sessions/1");
     }
 
     #[tokio::test]
