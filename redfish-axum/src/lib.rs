@@ -1,4 +1,4 @@
-use std::{sync::{Arc, Mutex}, collections::HashMap};
+use std::{sync::{Arc, Mutex}};
 use axum::{
     extract::{
         Path,
@@ -79,7 +79,7 @@ pub trait RedfishTree {
 pub fn app<T: RedfishTree + Send + Sync + 'static>(tree: T) -> NormalizePath<Router> {
     let state = AppState {
         tree: Arc::new(Mutex::new(tree)),
-        sessions: Arc::new(Mutex::new(HashMap::new())),
+        sessions: Arc::new(Mutex::new(Vec::new())),
     };
 
     let app = Router::new()
@@ -96,11 +96,17 @@ pub fn app<T: RedfishTree + Send + Sync + 'static>(tree: T) -> NormalizePath<Rou
         .layer(app)
 }
 
+struct Session {
+    token: String,
+    username: String,
+    uri: String,
+}
+
 //FIXME: Figure out right kind of mutex: https://docs.rs/tokio/1.25.0/tokio/sync/struct.Mutex.html#which-kind-of-mutex-should-you-use
 #[derive(Clone)]
 struct AppState {
     tree: Arc<Mutex<dyn RedfishTree + Send>>,
-    sessions: Arc<Mutex<HashMap<String, String>>>,
+    sessions: Arc<Mutex<Vec<Session>>>,
 }
 
 async fn getter(
@@ -153,10 +159,16 @@ async fn deleter(
     };
 
     match tree.delete(uri.as_str(), user.as_deref()) {
-        Ok(_) => (
-            StatusCode::NO_CONTENT,
-            [("Cache-Control", "no-cache")],
-        ).into_response(),
+        Ok(_) => {
+            let mut sessions = state.sessions.lock().unwrap();
+            for index in 0..sessions.len() {
+                if sessions[index].uri == uri {
+                    sessions.swap_remove(index);
+                    break;
+                }
+            }
+            (StatusCode::NO_CONTENT, [("Cache-Control", "no-cache")]).into_response()
+        },
         Err(error) => get_error_response(error),
     }
 }
@@ -195,9 +207,14 @@ async fn poster(
             // TODO: Would it be better to inspect node to see if it's a Session?
             if uri == "/redfish/v1/SessionService/Sessions" {
                 let token = Uuid::new_v4().as_simple().to_string();
-                let user = node.get_body().as_object().unwrap().get("UserName").unwrap().as_str().unwrap().to_string();
-                state.sessions.lock().unwrap().insert(token.clone(), user);
-                let header_val = HeaderValue::from_str(token.as_str()).expect("FIXME");
+                let username = node.get_body().as_object().unwrap().get("UserName").unwrap().as_str().unwrap().to_string();
+                let session = Session {
+                    token: token.clone(),
+                    username,
+                    uri: node.get_uri().to_string(),
+                };
+                state.sessions.lock().unwrap().push(session);
+                let header_val = HeaderValue::from_str(token.as_str()).unwrap();
                 additional_headers.insert("x-auth-token", header_val);
             }
             get_node_created_response(node, additional_headers)
@@ -361,8 +378,10 @@ fn get_error_response(error: RedfishErr) -> Response {
 }
 
 fn get_token_user(token: String, state: &AppState) -> Option<String> {
-    match state.sessions.lock().unwrap().get(&token) {
-        None => None,
-        Some(username) => Some(username.clone())
+    for session in state.sessions.lock().unwrap().iter() {
+        if session.token == token {
+            return Some(session.username.clone());
+        }
     }
+    None
 }

@@ -667,6 +667,7 @@ mod tests {
         assert_eq!(get_header(&response, "Location"), "/redfish/v1/SessionService/Sessions/1");
         assert_eq!(get_header(&response, "cache-control"), "no-cache");
         assert_eq!(get_header(&response, "Link"), "<https://redfish.dmtf.org/schemas/v1/Session.v1_6_0.json>; rel=describedby");
+        let token1 = get_header(&response, "X-Auth-Token").to_string();
 
         // Create session 2
         let data = json!({"UserName": "Obiwan", "Password": "n/a"});
@@ -676,7 +677,7 @@ mod tests {
         assert_eq!(get_header(&response, "Location"), "/redfish/v1/SessionService/Sessions/2");
         assert_eq!(get_header(&response, "cache-control"), "no-cache");
         assert_eq!(get_header(&response, "Link"), "<https://redfish.dmtf.org/schemas/v1/Session.v1_6_0.json>; rel=describedby");
-        let token = get_header(&response, "X-Auth-Token").to_string();
+        let token2 = get_header(&response, "X-Auth-Token").to_string();
 
         let body = get_response_json(response).await;
         assert_eq!(body, json!({
@@ -688,8 +689,8 @@ mod tests {
             "Password": serde_json::Value::Null,
         }));
 
-        // GET the sessions and collection
-        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/1", StatusCode::OK, Some(token.as_str()), &[("allow", "GET,HEAD,DELETE")]).await;
+        // GET the sessions and collection, ensure both tokens work
+        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/1", StatusCode::OK, Some(token2.as_str()), &[("allow", "GET,HEAD,DELETE")]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions/1",
             "@odata.type": "#Session.v1_6_0.Session",
@@ -699,7 +700,7 @@ mod tests {
             "Password": serde_json::Value::Null,
         }));
 
-        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/2", StatusCode::OK, Some(token.as_str()), &[("allow", "GET,HEAD,DELETE")]).await;
+        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/2", StatusCode::OK, Some(token2.as_str()), &[("allow", "GET,HEAD,DELETE")]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions/2",
             "@odata.type": "#Session.v1_6_0.Session",
@@ -709,7 +710,7 @@ mod tests {
             "Password": serde_json::Value::Null,
         }));
 
-        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, Some(token.as_str()), &[("allow", "GET,HEAD,POST")]).await;
+        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, Some(token1.as_str()), &[("allow", "GET,HEAD,POST")]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions",
             "@odata.type": "#SessionCollection.SessionCollection",
@@ -722,11 +723,12 @@ mod tests {
         }));
 
         // DELETE a session
-        let response = delete(&mut app, "/redfish/v1/SessionService/Sessions/1", Some(token.as_str())).await;
+        let response = delete(&mut app, "/redfish/v1/SessionService/Sessions/1", Some(token2.as_str())).await;
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         assert_eq!(response.headers().get("cache-control").unwrap().to_str().unwrap(), "no-cache");
 
-        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, Some(token.as_str()), &[("allow", "GET,HEAD,POST")]).await;
+        // Ensure it is gone and that remaining token still works
+        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, Some(token2.as_str()), &[("allow", "GET,HEAD,POST")]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions",
             "@odata.type": "#SessionCollection.SessionCollection",
@@ -737,10 +739,10 @@ mod tests {
             "Members@odata.count": 1,
         }));
 
-        let response = get(&mut app, "/redfish/v1/SessionService/Sessions/1", Some(token.as_str())).await;
+        let response = get(&mut app, "/redfish/v1/SessionService/Sessions/1", Some(token2.as_str())).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
-        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/2", StatusCode::OK, Some(token.as_str()), &[("allow", "GET,HEAD,DELETE")]).await;
+        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/2", StatusCode::OK, Some(token2.as_str()), &[("allow", "GET,HEAD,DELETE")]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions/2",
             "@odata.type": "#Session.v1_6_0.Session",
@@ -749,6 +751,10 @@ mod tests {
             "UserName": "Obiwan",
             "Password": serde_json::Value::Null,
         }));
+
+        // Ensure token of deleted session does not work
+        let response = get(&mut app, "/redfish/v1/SessionService/Sessions", Some(token1.as_str())).await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]
