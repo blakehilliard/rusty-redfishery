@@ -9,6 +9,7 @@ use axum::{
     response::{Json, Response, IntoResponse},
     Router,
 };
+use http_auth_basic;
 use tower_http::normalize_path::{NormalizePath, NormalizePathLayer};
 use tower::layer::Layer;
 use serde_json::{json};
@@ -121,14 +122,9 @@ async fn getter(
     }
     let uri = "/redfish/".to_owned() + &path;
     let tree = state.tree.lock().unwrap();
-    let user = match headers.get("x-auth-token") {
-        None => None,
-        Some(token) => match get_token_user(token.to_str().unwrap().to_string(), &state) {
-            None => {
-                return get_error_response(RedfishErr::Unauthorized);
-            },
-            Some(user_ptr) => Some(user_ptr.clone()), // TODO: Fix wasteful clone
-        },
+    let user = match get_request_username(&headers, &state) {
+        Ok(user) => user,
+        Err(e) => return get_error_response(e),
     };
     match tree.get(uri.as_str(), user.as_deref()) {
         Ok(node) => get_node_get_response(node),
@@ -148,14 +144,9 @@ async fn deleter(
     }
     let uri = "/redfish/".to_owned() + &path;
     let mut tree = state.tree.lock().unwrap();
-    let user = match headers.get("x-auth-token") {
-        None => None,
-        Some(token) => match get_token_user(token.to_str().unwrap().to_string(), &state) {
-            None => {
-                return get_error_response(RedfishErr::Unauthorized);
-            },
-            Some(user_ptr) => Some(user_ptr.clone()),
-        },
+    let user = match get_request_username(&headers, &state) {
+        Ok(user) => user,
+        Err(e) => return get_error_response(e),
     };
 
     match tree.delete(uri.as_str(), user.as_deref()) {
@@ -191,14 +182,9 @@ async fn poster(
     }
 
     let mut tree = state.tree.lock().unwrap();
-    let user = match headers.get("x-auth-token") {
-        None => None,
-        Some(token) => match get_token_user(token.to_str().unwrap().to_string(), &state) {
-            None => {
-                return get_error_response(RedfishErr::Unauthorized);
-            },
-            Some(user_ptr) => Some(user_ptr.clone()),
-        },
+    let user = match get_request_username(&headers, &state) {
+        Ok(user) => user,
+        Err(e) => return get_error_response(e),
     };
 
     match tree.create(uri.as_str(), payload, user.as_deref()) {
@@ -236,14 +222,9 @@ async fn patcher(
     }
     let uri = "/redfish/".to_owned() + &path;
     let mut tree = state.tree.lock().unwrap();
-    let user = match headers.get("x-auth-token") {
-        None => None,
-        Some(token) => match get_token_user(token.to_str().unwrap().to_string(), &state) {
-            None => {
-                return get_error_response(RedfishErr::Unauthorized);
-            },
-            Some(user_ptr) => Some(user_ptr.clone()),
-        },
+    let user = match get_request_username(&headers, &state) {
+        Ok(user) => user,
+        Err(e) => return get_error_response(e),
     };
 
     match tree.patch(uri.as_str(), payload, user.as_deref()) {
@@ -385,4 +366,24 @@ fn get_token_user(token: String, state: &AppState) -> Option<String> {
         }
     }
     None
+}
+
+// Parse credentials from request. If bad credentials, return RedfishError.
+// If no credentials, return Ok(None).
+// If credentials check out, return Ok(Some(username)).
+fn get_request_username(headers: &HeaderMap, state: &AppState) -> Result<Option<String>, RedfishErr> {
+    match headers.get("x-auth-token") {
+        Some(token) => match get_token_user(token.to_str().unwrap().to_string(), &state) {
+            None => Err(RedfishErr::Unauthorized),
+            Some(user) => Ok(Some(user)),
+        },
+        None => match headers.get("authorization") {
+            None => Ok(None),
+            Some(header_val) => match http_auth_basic::Credentials::from_header(header_val.to_str().unwrap().to_string()) {
+                Err(_) => Err(RedfishErr::Unauthorized),
+                // TODO: Actually validate credentials!
+                Ok(credentials) => Ok(Some(credentials.user_id)),
+            },
+        },
+    }
 }

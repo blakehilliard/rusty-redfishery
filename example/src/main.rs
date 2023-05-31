@@ -263,6 +263,11 @@ mod tests {
         }
     }
 
+    // Return Auth::Basic for admin/admin credentials
+    fn admin_admin_basic_auth() -> Auth {
+        Auth::Basic(String::from("Basic YWRtaW46YWRtaW4="))
+    }
+
     async fn get(app: &mut NormalizePath<Router>, uri: &str, auth: &Auth) -> Response {
         let mut req = Request::get(uri);
         add_auth_headers(&mut req, auth);
@@ -464,7 +469,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_missing_token() {
+    async fn get_missing_auth() {
         let mut app = app();
         let response = get(&mut app, "/redfish/v1/SessionService", &Auth::None).await;
         validate_unauthorized(&response);
@@ -474,7 +479,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn post_missing_token() {
+    async fn post_missing_auth() {
         let mut app = app();
         let response = post(&mut app, "/redfish/v1", json!({}), &Auth::None).await;
         validate_unauthorized(&response);
@@ -484,7 +489,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn delete_missing_token() {
+    async fn delete_missing_auth() {
         let mut app = app();
         let response = delete(&mut app, "/redfish/v1", &Auth::None).await;
         validate_unauthorized(&response);
@@ -494,7 +499,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn patch_missing_token() {
+    async fn patch_missing_auth() {
         let mut app = app();
         let response = patch(&mut app, "/redfish/v1", json!({}), &Auth::None).await;
         validate_unauthorized(&response);
@@ -528,9 +533,8 @@ mod tests {
     #[tokio::test]
     async fn get_session_collection() {
         let mut app = app();
-        let (token, _) = login(&mut app).await;
         let body = jget(
-            &mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, &token,
+            &mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, &admin_admin_basic_auth(),
             &[
                 ("allow", "GET,HEAD,POST"),
                 ("link", "<https://redfish.dmtf.org/schemas/v1/SessionCollection.json>; rel=describedby"),
@@ -540,10 +544,8 @@ mod tests {
             "@odata.id": "/redfish/v1/SessionService/Sessions",
             "@odata.type": "#SessionCollection.SessionCollection",
             "Name": "Session Collection",
-            "Members" : [
-                {"@odata.id": "/redfish/v1/SessionService/Sessions/1"},
-            ],
-            "Members@odata.count": 1,
+            "Members" : [],
+            "Members@odata.count": 0,
         }));
     }
 
@@ -655,7 +657,7 @@ mod tests {
         let mut app = app();
         let (token, _) = login(&mut app).await;
         let data = json!({"SessionTimeout": 300});
-        // TODO: pass in token
+
         let response = patch(&mut app, "/redfish/v1/SessionService", data, &token).await;
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(get_header(&response, "allow"), "GET,HEAD,PATCH");
@@ -683,6 +685,14 @@ mod tests {
             "SessionTimeout": 300,
             "Sessions" : {"@odata.id": "/redfish/v1/SessionService/Sessions"},
         }));
+
+        // Ensure basic auth works too
+        let data = json!({"SessionTimeout": 600});
+        let response = patch(&mut app, "/redfish/v1/SessionService", data, &admin_admin_basic_auth()).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(get_header(&response, "allow"), "GET,HEAD,PATCH");
+        assert_eq!(get_header(&response, "cache-control"), "no-cache");
+        assert_eq!(get_header(&response, "Link"), "<https://redfish.dmtf.org/schemas/v1/SessionService.v1_1_8.json>; rel=describedby");
     }
 
     #[tokio::test]
@@ -784,6 +794,15 @@ mod tests {
 
         // Ensure token of deleted session does not work
         let response = get(&mut app, "/redfish/v1/SessionService/Sessions", &token1).await;
+        validate_unauthorized(&response);
+
+        // DELETE other session using basic auth
+        let response = delete(&mut app, "/redfish/v1/SessionService/Sessions/2", &admin_admin_basic_auth()).await;
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert_eq!(response.headers().get("cache-control").unwrap().to_str().unwrap(), "no-cache");
+
+        // Ensure its token doesn't work anymore either
+        let response = get(&mut app, "/redfish/v1/SessionService/Sessions", &token2).await;
         validate_unauthorized(&response);
     }
 
