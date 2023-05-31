@@ -290,7 +290,35 @@ fn bad_odata_version_response() -> Response {
     ).into_response()
 }
 
-fn add_described_by_header(headers: &mut HeaderMap, node: &dyn RedfishNode) -> () {
+fn get_described_by_header_value(node: &dyn RedfishNode) -> Option<HeaderValue> {
+    if let Some(described_by) = node.described_by() {
+        let val = format!("<{}>; rel=describedby", described_by);
+        if let Ok(val) = HeaderValue::from_str(val.as_str()) {
+            return Some(val);
+        }
+    }
+    None
+}
+
+fn get_node_etag_header_value(node: &dyn RedfishNode) -> Option<HeaderValue> {
+    let body = node.get_body();
+    if body.is_object() {
+        if let Some(etag) = body.as_object().unwrap().get("@odata.etag") {
+            if let Ok(val) = HeaderValue::from_str(etag.as_str()?) {
+                return Some(val);
+            }
+        }
+    }
+    None
+}
+
+fn add_node_headers(headers: &mut HeaderMap, node: &dyn RedfishNode) -> () {
+    if let Some(described_by) = get_described_by_header_value(node) {
+        headers.insert(header::LINK, described_by);
+    }
+    if let Some(etag) = get_node_etag_header_value(node) {
+        headers.insert(header::ETAG, etag);
+    }
     if let Some(described_by) = node.described_by() {
         let val = format!("<{}>; rel=describedby", described_by);
         let val = HeaderValue::from_str(val.as_str()).unwrap();
@@ -300,7 +328,7 @@ fn add_described_by_header(headers: &mut HeaderMap, node: &dyn RedfishNode) -> (
 
 fn get_node_get_response(node: &dyn RedfishNode) -> Response {
     let mut headers = get_standard_headers(node_to_allow(node).as_str());
-    add_described_by_header(&mut headers, node);
+    add_node_headers(&mut headers, node);
     JsonResponse::new(
         StatusCode::OK,
         headers,
@@ -311,7 +339,7 @@ fn get_node_get_response(node: &dyn RedfishNode) -> Response {
 fn get_node_created_response(node: &dyn RedfishNode, additional_headers: HeaderMap) -> Response {
     let mut headers = get_standard_headers(node_to_allow(node).as_str());
     headers.extend(additional_headers);
-    add_described_by_header(&mut headers, node);
+    add_node_headers(&mut headers, node);
     headers.insert(header::LOCATION, HeaderValue::from_str(node.get_uri()).unwrap());
     JsonResponse::new(
         StatusCode::CREATED,
