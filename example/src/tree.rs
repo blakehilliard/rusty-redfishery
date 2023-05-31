@@ -55,7 +55,7 @@ impl RedfishNode for RedfishCollection {
         }
         json!({
             "@odata.id": self.uri,
-            "@odata.etag": "FIXME",
+            "@odata.etag": "\"FIXME\"",
             "@odata.type": format!("#{}.{}", self.resource_type.name, self.resource_type.name),
             "Name": self.name,
             "Members": member_list,
@@ -104,7 +104,7 @@ impl RedfishResource {
     ) -> Self {
         let mut body = rest.as_object().unwrap().clone();
         body.insert(String::from("@odata.id"), json!(uri));
-        body.insert(String::from("@odata.etag"), json!("FIXME"));
+        body.insert(String::from("@odata.etag"), json!("\"FIXME\""));
         body.insert(String::from("@odata.type"), json!(format!("#{}.{}.{}", schema_name, schema_version.to_str(), term_name)));
         let id = get_uri_id(uri);
         body.insert(String::from("Id"), json!(id));
