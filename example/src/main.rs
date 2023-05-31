@@ -239,16 +239,33 @@ mod tests {
         body::Body,
         http::{Request, StatusCode},
     };
-    use http::HeaderValue;
+    use http::{HeaderValue, request::Builder};
     use serde_json::{json, Value};
     use tower::{ServiceExt, Service};
 
-    async fn get(app: &mut NormalizePath<Router>, uri: &str, token: Option<&str>) -> Response {
-        let mut req = Request::get(uri);
-        if let Some(token) = token {
-            let headers = req.headers_mut().unwrap();
-            headers.insert("x-auth-token", HeaderValue::from_str(token).unwrap());
+    enum Auth {
+        Token(String),
+        Basic(String),
+        None,
+    }
+
+    fn add_auth_headers(req: &mut Builder, auth: &Auth) {
+        match auth {
+            Auth::Token(token) => {
+                let headers = req.headers_mut().unwrap();
+                headers.insert("x-auth-token", HeaderValue::from_str(&token).unwrap());
+            },
+            Auth::Basic(header_val) => {
+                let headers = req.headers_mut().unwrap();
+                headers.insert("authorization", HeaderValue::from_str(&header_val).unwrap());
+            },
+            _ => (),
         }
+    }
+
+    async fn get(app: &mut NormalizePath<Router>, uri: &str, auth: &Auth) -> Response {
+        let mut req = Request::get(uri);
+        add_auth_headers(&mut req, auth);
         let req = req.body(Body::empty()).unwrap();
         app.ready().await.unwrap().call(req).await.unwrap()
     }
@@ -259,8 +276,8 @@ mod tests {
         serde_json::from_slice(&body).unwrap()
     }
 
-    async fn jget(app: &mut NormalizePath<Router>, uri: &str, status_code: StatusCode, token: Option<&str>, headers: &[(&str, &str)]) -> Value {
-        let response = get(app, uri, token).await;
+    async fn jget(app: &mut NormalizePath<Router>, uri: &str, status_code: StatusCode, auth: &Auth, headers: &[(&str, &str)]) -> Value {
+        let response = get(app, uri, auth).await;
         assert_eq!(response.status(), status_code);
         assert_eq!(get_header(&response, "OData-Version"), "4.0");
         assert_eq!(get_header(&response, "cache-control"), "no-cache");
@@ -274,48 +291,39 @@ mod tests {
         response.headers().get(key).unwrap().to_str().unwrap()
     }
 
-    async fn login(app: &mut NormalizePath<Router>) -> (String, String) {
+    async fn login(app: &mut NormalizePath<Router>) -> (Auth, String) {
         let data = json!({"UserName": "Obiwan", "Password": "n/a"});
-        let response = post(app, "/redfish/v1/SessionService/Sessions", data, None).await;
+        let response = post(app, "/redfish/v1/SessionService/Sessions", data, &Auth::None).await;
         assert_eq!(response.status(), StatusCode::CREATED);
         assert_eq!(get_header(&response, "OData-Version"), "4.0");
         assert_eq!(get_header(&response, "Location"), "/redfish/v1/SessionService/Sessions/1");
         assert_eq!(get_header(&response, "cache-control"), "no-cache");
         assert_eq!(get_header(&response, "Link"), "<https://redfish.dmtf.org/schemas/v1/Session.v1_6_0.json>; rel=describedby");
         (
-            get_header(&response, "X-Auth-Token").to_string(),
+            Auth::Token(get_header(&response, "X-Auth-Token").to_string()),
             get_header(&response, "Location").to_string(),
         )
     }
 
-    async fn delete(app: &mut NormalizePath<Router>, uri: &str, token: Option<&str>) -> Response {
+    async fn delete(app: &mut NormalizePath<Router>, uri: &str, auth: &Auth) -> Response {
         let mut req = Request::delete(uri);
-        if let Some(token) = token {
-            let headers = req.headers_mut().unwrap();
-            headers.insert("x-auth-token", HeaderValue::from_str(token).unwrap());
-        }
+        add_auth_headers(&mut req, auth);
         let req = req.body(Body::empty()).unwrap();
         app.ready().await.unwrap().call(req).await.unwrap()
     }
 
-    async fn post(app: &mut NormalizePath<Router>, uri: &str, req: serde_json::Value, token: Option<&str>) -> Response {
+    async fn post(app: &mut NormalizePath<Router>, uri: &str, req: serde_json::Value, auth: &Auth) -> Response {
         let body = Body::from(serde_json::to_vec(&req).unwrap());
         let mut req = Request::post(uri).header("Content-Type", "application/json");
-        if let Some(token) = token {
-            let headers = req.headers_mut().unwrap();
-            headers.insert("x-auth-token", HeaderValue::from_str(token).unwrap());
-        }
+        add_auth_headers(&mut req, auth);
         let req = req.body(body).unwrap();
         app.ready().await.unwrap().call(req).await.unwrap()
     }
 
-    async fn patch(app: &mut NormalizePath<Router>, uri: &str, req: serde_json::Value, token: Option<&str>) -> Response {
+    async fn patch(app: &mut NormalizePath<Router>, uri: &str, req: serde_json::Value, auth: &Auth) -> Response {
         let body = Body::from(serde_json::to_vec(&req).unwrap());
         let mut req = Request::patch(uri).header("Content-Type", "application/json");
-        if let Some(token) = token {
-            let headers = req.headers_mut().unwrap();
-            headers.insert("x-auth-token", HeaderValue::from_str(token).unwrap());
-        }
+        add_auth_headers(&mut req, auth);
         let req = req.body(body).unwrap();
         app.ready().await.unwrap().call(req).await.unwrap()
     }
@@ -328,7 +336,7 @@ mod tests {
     #[tokio::test]
     async fn base_redfish_path() {
         let mut app = app();
-        let body = jget(&mut app, "/redfish", StatusCode::OK, None, &[("allow", "GET,HEAD")]).await;
+        let body = jget(&mut app, "/redfish", StatusCode::OK, &Auth::None, &[("allow", "GET,HEAD")]).await;
         assert_eq!(body, json!({ "v1": "/redfish/v1/" }));
     }
 
@@ -350,7 +358,7 @@ mod tests {
     async fn get_redfish_v1() {
         let mut app = app();
         let body = jget(
-            &mut app, "/redfish/v1", StatusCode::OK, None,
+            &mut app, "/redfish/v1", StatusCode::OK, &Auth::None,
             &[
                 ("allow", "GET,HEAD"),
                 ("link", "<https://redfish.dmtf.org/schemas/v1/ServiceRoot.v1_15_0.json>; rel=describedby"),
@@ -377,7 +385,7 @@ mod tests {
     #[tokio::test]
     async fn get_odata_service_doc() {
         let mut app = app();
-        let body = jget(&mut app, "/redfish/v1/odata", StatusCode::OK, None, &[("allow", "GET,HEAD")]).await;
+        let body = jget(&mut app, "/redfish/v1/odata", StatusCode::OK, &Auth::None, &[("allow", "GET,HEAD")]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/odata",
             "@odata.context": "/redfish/v1/$metadata",
@@ -404,7 +412,7 @@ mod tests {
     #[tokio::test]
     async fn get_odata_metadata_doc() {
         let mut app = app();
-        let response = get(&mut app, "/redfish/v1/$metadata", None).await;
+        let response = get(&mut app, "/redfish/v1/$metadata", &Auth::None).await;
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(get_header(&response, "OData-Version"), "4.0");
         assert_eq!(get_header(&response, "allow"), "GET,HEAD");
@@ -458,7 +466,7 @@ mod tests {
     #[tokio::test]
     async fn get_missing_token() {
         let mut app = app();
-        let response = get(&mut app, "/redfish/v1/SessionService", None).await;
+        let response = get(&mut app, "/redfish/v1/SessionService", &Auth::None).await;
         validate_unauthorized(&response);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         let body = std::str::from_utf8(&body).unwrap();
@@ -468,7 +476,7 @@ mod tests {
     #[tokio::test]
     async fn post_missing_token() {
         let mut app = app();
-        let response = post(&mut app, "/redfish/v1", json!({}), None).await;
+        let response = post(&mut app, "/redfish/v1", json!({}), &Auth::None).await;
         validate_unauthorized(&response);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         let body = std::str::from_utf8(&body).unwrap();
@@ -478,7 +486,7 @@ mod tests {
     #[tokio::test]
     async fn delete_missing_token() {
         let mut app = app();
-        let response = delete(&mut app, "/redfish/v1", None).await;
+        let response = delete(&mut app, "/redfish/v1", &Auth::None).await;
         validate_unauthorized(&response);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         let body = std::str::from_utf8(&body).unwrap();
@@ -488,7 +496,7 @@ mod tests {
     #[tokio::test]
     async fn patch_missing_token() {
         let mut app = app();
-        let response = patch(&mut app, "/redfish/v1", json!({}), None).await;
+        let response = patch(&mut app, "/redfish/v1", json!({}), &Auth::None).await;
         validate_unauthorized(&response);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         let body = std::str::from_utf8(&body).unwrap();
@@ -496,11 +504,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn session_service() {
+    async fn get_session_service() {
         let mut app = app();
         let (token, _) = login(&mut app).await;
         let body = jget(
-            &mut app, "/redfish/v1/SessionService/", StatusCode::OK, Some(token.as_str()),
+            &mut app, "/redfish/v1/SessionService/", StatusCode::OK, &token,
             &[
                 ("allow", "GET,HEAD,PATCH"),
                 ("link", "<https://redfish.dmtf.org/schemas/v1/SessionService.v1_1_8.json>; rel=describedby"),
@@ -522,7 +530,7 @@ mod tests {
         let mut app = app();
         let (token, _) = login(&mut app).await;
         let body = jget(
-            &mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, Some(token.as_str()),
+            &mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, &token,
             &[
                 ("allow", "GET,HEAD,POST"),
                 ("link", "<https://redfish.dmtf.org/schemas/v1/SessionCollection.json>; rel=describedby"),
@@ -543,7 +551,7 @@ mod tests {
     async fn default_administrator_role() {
         let mut app = app();
         let (token, _) = login(&mut app).await;
-        let body = jget(&mut app, "/redfish/v1/AccountService/Roles/Administrator", StatusCode::OK, Some(token.as_str()), &[]).await;
+        let body = jget(&mut app, "/redfish/v1/AccountService/Roles/Administrator", StatusCode::OK, &token, &[]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/AccountService/Roles/Administrator",
             "@odata.type": "#Role.v1_3_1.Role",
@@ -565,7 +573,7 @@ mod tests {
     async fn default_operator_role() {
         let mut app = app();
         let (token, _) = login(&mut app).await;
-        let body = jget(&mut app, "/redfish/v1/AccountService/Roles/Operator", StatusCode::OK, Some(token.as_str()), &[]).await;
+        let body = jget(&mut app, "/redfish/v1/AccountService/Roles/Operator", StatusCode::OK, &token, &[]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/AccountService/Roles/Operator",
             "@odata.type": "#Role.v1_3_1.Role",
@@ -585,7 +593,7 @@ mod tests {
     async fn default_readonly_role() {
         let mut app = app();
         let (token, _) = login(&mut app).await;
-        let body = jget(&mut app, "/redfish/v1/AccountService/Roles/ReadOnly", StatusCode::OK, Some(token.as_str()), &[]).await;
+        let body = jget(&mut app, "/redfish/v1/AccountService/Roles/ReadOnly", StatusCode::OK, &token, &[]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/AccountService/Roles/ReadOnly",
             "@odata.type": "#Role.v1_3_1.Role",
@@ -605,11 +613,11 @@ mod tests {
         let mut app = app();
         let (token, _) = login(&mut app).await;
 
-        let response = delete(&mut app, "/redfish/v1", Some(token.as_str())).await;
+        let response = delete(&mut app, "/redfish/v1", &token).await;
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
         assert_eq!(get_header(&response, "allow"), "GET,HEAD");
 
-        let response = delete(&mut app, "/redfish/v1/SessionService/Sessions", Some(token.as_str())).await;
+        let response = delete(&mut app, "/redfish/v1/SessionService/Sessions", &token).await;
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
         assert_eq!(get_header(&response, "allow"), "GET,HEAD,POST");
     }
@@ -619,11 +627,11 @@ mod tests {
         let mut app = app();
         let (token, _) = login(&mut app).await;
 
-        let response = post(&mut app, "/redfish/v1", json!({}), Some(token.as_str())).await;
+        let response = post(&mut app, "/redfish/v1", json!({}), &token).await;
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
         assert_eq!(get_header(&response, "allow"), "GET,HEAD");
 
-        let response = post(&mut app, "/redfish/v1/SessionService", json!({}), Some(token.as_str())).await;
+        let response = post(&mut app, "/redfish/v1/SessionService", json!({}), &token).await;
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
         assert_eq!(get_header(&response, "allow"), "GET,HEAD,PATCH");
     }
@@ -633,11 +641,11 @@ mod tests {
         let mut app = app();
         let (token, _) = login(&mut app).await;
 
-        let response = patch(&mut app, "/redfish/v1", json!({}), Some(token.as_str())).await;
+        let response = patch(&mut app, "/redfish/v1", json!({}), &token).await;
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
         assert_eq!(get_header(&response, "allow"), "GET,HEAD");
 
-        let response = patch(&mut app, "/redfish/v1/SessionService/Sessions", json!({}), Some(token.as_str())).await;
+        let response = patch(&mut app, "/redfish/v1/SessionService/Sessions", json!({}), &token).await;
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
         assert_eq!(get_header(&response, "allow"), "GET,HEAD,POST");
     }
@@ -648,7 +656,7 @@ mod tests {
         let (token, _) = login(&mut app).await;
         let data = json!({"SessionTimeout": 300});
         // TODO: pass in token
-        let response = patch(&mut app, "/redfish/v1/SessionService", data, Some(token.as_str())).await;
+        let response = patch(&mut app, "/redfish/v1/SessionService", data, &token).await;
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(get_header(&response, "allow"), "GET,HEAD,PATCH");
         assert_eq!(get_header(&response, "cache-control"), "no-cache");
@@ -665,7 +673,7 @@ mod tests {
             "Sessions" : {"@odata.id": "/redfish/v1/SessionService/Sessions"},
         }));
 
-        let body = jget(&mut app, "/redfish/v1/SessionService/", StatusCode::OK, Some(token.as_str()), &[("allow", "GET,HEAD,PATCH")]).await;
+        let body = jget(&mut app, "/redfish/v1/SessionService/", StatusCode::OK, &token, &[("allow", "GET,HEAD,PATCH")]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService",
             "@odata.type": "#SessionService.v1_1_8.SessionService",
@@ -683,23 +691,23 @@ mod tests {
 
         // Create session 1
         let data = json!({"UserName": "admin", "Password": "admin"});
-        let response = post(&mut app, "/redfish/v1/SessionService/Sessions", data, None).await;
+        let response = post(&mut app, "/redfish/v1/SessionService/Sessions", data, &Auth::None).await;
         assert_eq!(response.status(), StatusCode::CREATED);
         assert_eq!(get_header(&response, "OData-Version"), "4.0");
         assert_eq!(get_header(&response, "Location"), "/redfish/v1/SessionService/Sessions/1");
         assert_eq!(get_header(&response, "cache-control"), "no-cache");
         assert_eq!(get_header(&response, "Link"), "<https://redfish.dmtf.org/schemas/v1/Session.v1_6_0.json>; rel=describedby");
-        let token1 = get_header(&response, "X-Auth-Token").to_string();
+        let token1 = Auth::Token(get_header(&response, "X-Auth-Token").to_string());
 
         // Create session 2
         let data = json!({"UserName": "Obiwan", "Password": "n/a"});
-        let response = post(&mut app, "/redfish/v1/SessionService/Sessions", data, None).await;
+        let response = post(&mut app, "/redfish/v1/SessionService/Sessions", data, &Auth::None).await;
         assert_eq!(response.status(), StatusCode::CREATED);
         assert_eq!(get_header(&response, "OData-Version"), "4.0");
         assert_eq!(get_header(&response, "Location"), "/redfish/v1/SessionService/Sessions/2");
         assert_eq!(get_header(&response, "cache-control"), "no-cache");
         assert_eq!(get_header(&response, "Link"), "<https://redfish.dmtf.org/schemas/v1/Session.v1_6_0.json>; rel=describedby");
-        let token2 = get_header(&response, "X-Auth-Token").to_string();
+        let token2 = Auth::Token(get_header(&response, "X-Auth-Token").to_string());
 
         let body = get_response_json(response).await;
         assert_eq!(body, json!({
@@ -712,7 +720,7 @@ mod tests {
         }));
 
         // GET the sessions and collection, ensure both tokens work
-        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/1", StatusCode::OK, Some(token2.as_str()), &[("allow", "GET,HEAD,DELETE")]).await;
+        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/1", StatusCode::OK, &token2, &[("allow", "GET,HEAD,DELETE")]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions/1",
             "@odata.type": "#Session.v1_6_0.Session",
@@ -722,7 +730,7 @@ mod tests {
             "Password": serde_json::Value::Null,
         }));
 
-        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/2", StatusCode::OK, Some(token2.as_str()), &[("allow", "GET,HEAD,DELETE")]).await;
+        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/2", StatusCode::OK, &token1, &[("allow", "GET,HEAD,DELETE")]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions/2",
             "@odata.type": "#Session.v1_6_0.Session",
@@ -732,7 +740,7 @@ mod tests {
             "Password": serde_json::Value::Null,
         }));
 
-        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, Some(token1.as_str()), &[("allow", "GET,HEAD,POST")]).await;
+        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, &token2, &[("allow", "GET,HEAD,POST")]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions",
             "@odata.type": "#SessionCollection.SessionCollection",
@@ -745,12 +753,12 @@ mod tests {
         }));
 
         // DELETE a session
-        let response = delete(&mut app, "/redfish/v1/SessionService/Sessions/1", Some(token2.as_str())).await;
+        let response = delete(&mut app, "/redfish/v1/SessionService/Sessions/1", &token2).await;
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         assert_eq!(response.headers().get("cache-control").unwrap().to_str().unwrap(), "no-cache");
 
         // Ensure it is gone and that remaining token still works
-        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, Some(token2.as_str()), &[("allow", "GET,HEAD,POST")]).await;
+        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, &token2, &[("allow", "GET,HEAD,POST")]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions",
             "@odata.type": "#SessionCollection.SessionCollection",
@@ -761,10 +769,10 @@ mod tests {
             "Members@odata.count": 1,
         }));
 
-        let response = get(&mut app, "/redfish/v1/SessionService/Sessions/1", Some(token2.as_str())).await;
+        let response = get(&mut app, "/redfish/v1/SessionService/Sessions/1", &token2).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
-        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/2", StatusCode::OK, Some(token2.as_str()), &[("allow", "GET,HEAD,DELETE")]).await;
+        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/2", StatusCode::OK, &token2, &[("allow", "GET,HEAD,DELETE")]).await;
         assert_eq!(body, json!({
             "@odata.id": "/redfish/v1/SessionService/Sessions/2",
             "@odata.type": "#Session.v1_6_0.Session",
@@ -775,7 +783,7 @@ mod tests {
         }));
 
         // Ensure token of deleted session does not work
-        let response = get(&mut app, "/redfish/v1/SessionService/Sessions", Some(token1.as_str())).await;
+        let response = get(&mut app, "/redfish/v1/SessionService/Sessions", &token1).await;
         validate_unauthorized(&response);
     }
 
@@ -783,7 +791,7 @@ mod tests {
     async fn post_to_members() {
         let mut app = app();
         let data = json!({"UserName": "Obiwan", "Password": "n/a"});
-        let response = post(&mut app, "/redfish/v1/SessionService/Sessions/Members", data, None).await;
+        let response = post(&mut app, "/redfish/v1/SessionService/Sessions/Members", data, &Auth::None).await;
         assert_eq!(response.status(), StatusCode::CREATED);
         assert_eq!(get_header(&response, "OData-Version"), "4.0");
         assert_eq!(get_header(&response, "Location"), "/redfish/v1/SessionService/Sessions/1");
@@ -793,7 +801,7 @@ mod tests {
     async fn post_not_found() {
         let mut app = app();
         let (token, _) = login(&mut app).await;
-        let response = post(&mut app, "/redfish/v1/notfound", json!({}), Some(token.as_str())).await;
+        let response = post(&mut app, "/redfish/v1/notfound", json!({}), &token).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         assert_eq!(body, "");
@@ -803,7 +811,7 @@ mod tests {
     async fn delete_not_found() {
         let mut app = app();
         let (token, _) = login(&mut app).await;
-        let response = delete(&mut app, "/redfish/v1/notfound", Some(token.as_str())).await;
+        let response = delete(&mut app, "/redfish/v1/notfound", &token).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         assert_eq!(body, "");
@@ -813,7 +821,7 @@ mod tests {
     async fn get_not_found() {
         let mut app = app();
         let (token, _) = login(&mut app).await;
-        let response = get(&mut app, "/redfish/v1/notfound", Some(token.as_str())).await;
+        let response = get(&mut app, "/redfish/v1/notfound", &token).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         assert_eq!(body, "");
@@ -823,7 +831,9 @@ mod tests {
     async fn head_not_found() {
         let mut app = app();
         let (token, _) = login(&mut app).await;
-        let req = Request::head("/redfish/v1/notfound").header("x-auth-token", token).body(Body::empty()).unwrap();
+        let mut req = Request::head("/redfish/v1/notfound");
+        add_auth_headers(&mut req, &token);
+        let req = req.body(Body::empty()).unwrap();
         let response = app.ready().await.unwrap().call(req).await.unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
@@ -834,7 +844,7 @@ mod tests {
     async fn patch_not_found() {
         let mut app = app();
         let (token, _) = login(&mut app).await;
-        let response = patch(&mut app, "/redfish/v1/notfound", json!({}), Some(token.as_str())).await;
+        let response = patch(&mut app, "/redfish/v1/notfound", json!({}), &token).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         assert_eq!(body, "");
