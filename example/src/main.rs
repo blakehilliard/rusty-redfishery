@@ -369,6 +369,7 @@ mod tests {
                 ("link", "<https://redfish.dmtf.org/schemas/v1/ServiceRoot.v1_15_0.json>; rel=describedby"),
             ]).await;
         assert_eq!(body, json!({
+            "@odata.etag": "FIXME",
             "@odata.id": "/redfish/v1",
             "@odata.type": "#ServiceRoot.v1_15_0.ServiceRoot",
             "Id": "RootService",
@@ -517,9 +518,11 @@ mod tests {
             &[
                 ("allow", "GET,HEAD,PATCH"),
                 ("link", "<https://redfish.dmtf.org/schemas/v1/SessionService.v1_1_8.json>; rel=describedby"),
+                //("etag", "FIXME"),
             ],
         ).await;
         assert_eq!(body, json!({
+            "@odata.etag": "FIXME",
             "@odata.id": "/redfish/v1/SessionService",
             "@odata.type": "#SessionService.v1_1_8.SessionService",
             "@Redfish.WriteableProperties": ["SessionTimeout"],
@@ -538,9 +541,11 @@ mod tests {
             &[
                 ("allow", "GET,HEAD,POST"),
                 ("link", "<https://redfish.dmtf.org/schemas/v1/SessionCollection.json>; rel=describedby"),
+                //("etag", "FIXME"),
             ],
         ).await;
         assert_eq!(body, json!({
+            "@odata.etag": "FIXME",
             "@odata.id": "/redfish/v1/SessionService/Sessions",
             "@odata.type": "#SessionCollection.SessionCollection",
             "Name": "Session Collection",
@@ -555,6 +560,7 @@ mod tests {
         let (token, _) = login(&mut app).await;
         let body = jget(&mut app, "/redfish/v1/AccountService/Roles/Administrator", StatusCode::OK, &token, &[]).await;
         assert_eq!(body, json!({
+            "@odata.etag": "FIXME",
             "@odata.id": "/redfish/v1/AccountService/Roles/Administrator",
             "@odata.type": "#Role.v1_3_1.Role",
             "Id": "Administrator",
@@ -577,6 +583,7 @@ mod tests {
         let (token, _) = login(&mut app).await;
         let body = jget(&mut app, "/redfish/v1/AccountService/Roles/Operator", StatusCode::OK, &token, &[]).await;
         assert_eq!(body, json!({
+            "@odata.etag": "FIXME",
             "@odata.id": "/redfish/v1/AccountService/Roles/Operator",
             "@odata.type": "#Role.v1_3_1.Role",
             "Id": "Operator",
@@ -597,6 +604,7 @@ mod tests {
         let (token, _) = login(&mut app).await;
         let body = jget(&mut app, "/redfish/v1/AccountService/Roles/ReadOnly", StatusCode::OK, &token, &[]).await;
         assert_eq!(body, json!({
+            "@odata.etag": "FIXME",
             "@odata.id": "/redfish/v1/AccountService/Roles/ReadOnly",
             "@odata.type": "#Role.v1_3_1.Role",
             "Id": "ReadOnly",
@@ -666,6 +674,7 @@ mod tests {
 
         let body = get_response_json(response).await;
         assert_eq!(body, json!({
+            "@odata.etag": "FIXME",
             "@odata.id": "/redfish/v1/SessionService",
             "@odata.type": "#SessionService.v1_1_8.SessionService",
             "@Redfish.WriteableProperties": ["SessionTimeout"],
@@ -677,6 +686,7 @@ mod tests {
 
         let body = jget(&mut app, "/redfish/v1/SessionService/", StatusCode::OK, &token, &[("allow", "GET,HEAD,PATCH")]).await;
         assert_eq!(body, json!({
+            "@odata.etag": "FIXME",
             "@odata.id": "/redfish/v1/SessionService",
             "@odata.type": "#SessionService.v1_1_8.SessionService",
             "@Redfish.WriteableProperties": ["SessionTimeout"],
@@ -721,6 +731,7 @@ mod tests {
 
         let body = get_response_json(response).await;
         assert_eq!(body, json!({
+            "@odata.etag": "FIXME",
             "@odata.id": "/redfish/v1/SessionService/Sessions/2",
             "@odata.type": "#Session.v1_6_0.Session",
             "Id": "2",
@@ -732,6 +743,7 @@ mod tests {
         // GET the sessions and collection, ensure both tokens work
         let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/1", StatusCode::OK, &token2, &[("allow", "GET,HEAD,DELETE")]).await;
         assert_eq!(body, json!({
+            "@odata.etag": "FIXME",
             "@odata.id": "/redfish/v1/SessionService/Sessions/1",
             "@odata.type": "#Session.v1_6_0.Session",
             "Id": "1",
@@ -742,6 +754,7 @@ mod tests {
 
         let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/2", StatusCode::OK, &token1, &[("allow", "GET,HEAD,DELETE")]).await;
         assert_eq!(body, json!({
+            "@odata.etag": "FIXME",
             "@odata.id": "/redfish/v1/SessionService/Sessions/2",
             "@odata.type": "#Session.v1_6_0.Session",
             "Id": "2",
@@ -752,6 +765,7 @@ mod tests {
 
         let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, &token2, &[("allow", "GET,HEAD,POST")]).await;
         assert_eq!(body, json!({
+            "@odata.etag": "FIXME",
             "@odata.id": "/redfish/v1/SessionService/Sessions",
             "@odata.type": "#SessionCollection.SessionCollection",
             "Name": "Session Collection",
@@ -770,6 +784,7 @@ mod tests {
         // Ensure it is gone and that remaining token still works
         let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, &token2, &[("allow", "GET,HEAD,POST")]).await;
         assert_eq!(body, json!({
+            "@odata.etag": "FIXME",
             "@odata.id": "/redfish/v1/SessionService/Sessions",
             "@odata.type": "#SessionCollection.SessionCollection",
             "Name": "Session Collection",
@@ -784,6 +799,7 @@ mod tests {
 
         let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/2", StatusCode::OK, &token2, &[("allow", "GET,HEAD,DELETE")]).await;
         assert_eq!(body, json!({
+            "@odata.etag": "FIXME",
             "@odata.id": "/redfish/v1/SessionService/Sessions/2",
             "@odata.type": "#Session.v1_6_0.Session",
             "Id": "2",
