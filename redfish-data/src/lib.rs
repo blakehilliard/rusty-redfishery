@@ -1,5 +1,5 @@
 use serde::Serialize;
-use serde_json::{Value, json, Map};
+use serde_json::{json, Map, Value};
 
 #[derive(Clone, Copy, Debug)]
 pub struct AllowedMethods {
@@ -44,7 +44,11 @@ pub struct RedfishResourceSchemaVersion {
 
 impl RedfishResourceSchemaVersion {
     pub fn new(major: u32, minor: u32, build: u32) -> Self {
-        Self { major, minor, build }
+        Self {
+            major,
+            minor,
+            build,
+        }
     }
 }
 
@@ -83,8 +87,15 @@ impl RedfishResourceType {
     // Create for a DMTF schema of a redfish resource
     pub fn new_dmtf(name: String, version: RedfishResourceSchemaVersion) -> Self {
         Self {
-            xml_schema_uri: format!("http://redfish.dmtf.org/schemas/v1/{}_v{}.xml", name, version.major),
-            described_by: format!("https://redfish.dmtf.org/schemas/v1/{}.{}.json", name, version.to_str()),
+            xml_schema_uri: format!(
+                "http://redfish.dmtf.org/schemas/v1/{}_v{}.xml",
+                name, version.major
+            ),
+            described_by: format!(
+                "https://redfish.dmtf.org/schemas/v1/{}.{}.json",
+                name,
+                version.to_str()
+            ),
             name,
             version,
         }
@@ -111,7 +122,11 @@ pub struct RedfishCollectionType {
 impl RedfishCollectionType {
     pub fn new_dmtf(name: String, version: RedfishCollectionSchemaVersion) -> Self {
         Self {
-            xml_schema_uri: format!("http://redfish.dmtf.org/schemas/v1/{}_{}.xml", name, version.to_str()),
+            xml_schema_uri: format!(
+                "http://redfish.dmtf.org/schemas/v1/{}_{}.xml",
+                name,
+                version.to_str()
+            ),
             described_by: format!("https://redfish.dmtf.org/schemas/v1/{}.json", name),
             name,
             version,
@@ -140,7 +155,13 @@ impl ODataServiceValue {
     fn new(url: &str) -> Self {
         Self {
             kind: String::from("Singleton"),
-            name: String::from(std::path::Path::new(url).file_name().unwrap().to_str().unwrap()),
+            name: String::from(
+                std::path::Path::new(url)
+                    .file_name()
+                    .unwrap()
+                    .to_str()
+                    .unwrap(),
+            ),
             url: String::from(url),
         }
     }
@@ -167,7 +188,10 @@ pub fn get_odata_service_document(service_root: &Map<String, Value>) -> Value {
     })
 }
 
-pub fn get_odata_metadata_document(collection_types: &[RedfishCollectionType], resource_types: &[RedfishResourceType]) -> String {
+pub fn get_odata_metadata_document(
+    collection_types: &[RedfishCollectionType],
+    resource_types: &[RedfishResourceType],
+) -> String {
     let mut body = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<edmx:Edmx xmlns:edmx=\"http://docs.oasis-open.org/odata/ns/edmx\" Version=\"4.0\">\n");
     let mut service_root_type: Option<&RedfishResourceType> = None;
     for collection_type in collection_types {
@@ -179,13 +203,21 @@ pub fn get_odata_metadata_document(collection_types: &[RedfishCollectionType], r
             service_root_type = Some(resource_type);
         }
     }
-    body.push_str("  <edmx:Reference Uri=\"http://redfish.dmtf.org/schemas/v1/RedfishExtensions_v1.xml\">\n");
+    body.push_str(
+        "  <edmx:Reference Uri=\"http://redfish.dmtf.org/schemas/v1/RedfishExtensions_v1.xml\">\n",
+    );
     body.push_str("    <edmx:Include Namespace=\"RedfishExtensions.v1_0_0\" Alias=\"Redfish\"/>\n");
     body.push_str("  </edmx:Reference>\n");
     if service_root_type.is_some() {
         body.push_str("  <edmx:DataServices>\n");
         body.push_str("    <Schema xmlns=\"http://docs.oasis-open.org/odata/ns/edm\" Namespace=\"Service\">\n");
-        body.push_str(format!("      <EntityContainer Name=\"Service\" Extends=\"{}.ServiceContainer\" />\n", service_root_type.unwrap().get_versioned_name()).as_str());
+        body.push_str(
+            format!(
+                "      <EntityContainer Name=\"Service\" Extends=\"{}.ServiceContainer\" />\n",
+                service_root_type.unwrap().get_versioned_name()
+            )
+            .as_str(),
+        );
         body.push_str("    </Schema>\n  </edmx:DataServices>\n");
     }
     body.push_str("</edmx:Edmx>\n");
@@ -195,7 +227,13 @@ pub fn get_odata_metadata_document(collection_types: &[RedfishCollectionType], r
 pub fn get_uri_id(uri: &str) -> String {
     match uri {
         "/redfish/v1" => String::from("RootService"),
-        _ => String::from(std::path::Path::new(uri).file_name().unwrap().to_str().unwrap()),
+        _ => String::from(
+            std::path::Path::new(uri)
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap(),
+        ),
     }
 }
 
@@ -238,7 +276,9 @@ mod tests {
     fn dmtf_resource_type() {
         let version = RedfishResourceSchemaVersion::new(1, 3, 0);
         let resource_type = RedfishResourceType::new_dmtf(String::from("Role"), version);
-        let mut exp_xml = String::from("  <edmx:Reference Uri=\"http://redfish.dmtf.org/schemas/v1/Role_v1.xml\">\n");
+        let mut exp_xml = String::from(
+            "  <edmx:Reference Uri=\"http://redfish.dmtf.org/schemas/v1/Role_v1.xml\">\n",
+        );
         exp_xml.push_str("    <edmx:Include Namespace=\"Role\" />\n");
         exp_xml.push_str("    <edmx:Include Namespace=\"Role.v1_3_0\" />\n");
         exp_xml.push_str("  </edmx:Reference>\n");
@@ -260,33 +300,42 @@ mod tests {
             "ProtocolFeaturesSupported": {},
         });
         let doc = get_odata_service_document(service_root.as_object().unwrap());
-        assert_eq!(doc, json!({
-            "@odata.id": "/redfish/v1/odata",
-            "@odata.context": "/redfish/v1/$metadata",
-            "value": [
-                {
-                    "kind": "Singleton",
-                    "name": "v1",
-                    "url": "/redfish/v1",
-                },
-                {
-                    "kind": "Singleton",
-                    "name": "AccountService",
-                    "url": "/redfish/v1/AccountService",
-                },
-            ],
-        }));
+        assert_eq!(
+            doc,
+            json!({
+                "@odata.id": "/redfish/v1/odata",
+                "@odata.context": "/redfish/v1/$metadata",
+                "value": [
+                    {
+                        "kind": "Singleton",
+                        "name": "v1",
+                        "url": "/redfish/v1",
+                    },
+                    {
+                        "kind": "Singleton",
+                        "name": "AccountService",
+                        "url": "/redfish/v1/AccountService",
+                    },
+                ],
+            })
+        );
     }
 
     #[test]
     fn odata_metadata_document() {
         let mut collection_types = Vec::new();
-        collection_types.push(RedfishCollectionType::new_dmtf_v1(String::from("SessionCollection")));
+        collection_types.push(RedfishCollectionType::new_dmtf_v1(String::from(
+            "SessionCollection",
+        )));
 
         let mut resource_types = Vec::new();
-        resource_types.push(RedfishResourceType::new_dmtf(String::from("ServiceRoot"), RedfishResourceSchemaVersion::new(1, 15, 0)));
+        resource_types.push(RedfishResourceType::new_dmtf(
+            String::from("ServiceRoot"),
+            RedfishResourceSchemaVersion::new(1, 15, 0),
+        ));
 
-        let exp_xml = String::from(r#"<?xml version="1.0" encoding="UTF-8"?>
+        let exp_xml = String::from(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
 <edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" Version="4.0">
   <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/SessionCollection_v1.xml">
     <edmx:Include Namespace="SessionCollection" />
@@ -304,8 +353,10 @@ mod tests {
     </Schema>
   </edmx:DataServices>
 </edmx:Edmx>
-"#);
-        let doc = get_odata_metadata_document(collection_types.as_slice(), resource_types.as_slice());
+"#,
+        );
+        let doc =
+            get_odata_metadata_document(collection_types.as_slice(), resource_types.as_slice());
         assert_eq!(doc, exp_xml);
     }
 }

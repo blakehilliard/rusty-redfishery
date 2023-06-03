@@ -1,16 +1,10 @@
-use std::collections::HashMap;
-use serde_json::{Value, json, Map};
-use redfish_axum::{
-    RedfishNode,
-    RedfishTree, RedfishErr,
-};
+use redfish_axum::{RedfishErr, RedfishNode, RedfishTree};
 use redfish_data::{
-    RedfishCollectionType,
-    RedfishResourceType,
-    RedfishSchemaVersion,
-    RedfishResourceSchemaVersion,
-    get_uri_id, AllowedMethods,
+    get_uri_id, AllowedMethods, RedfishCollectionType, RedfishResourceSchemaVersion,
+    RedfishResourceType, RedfishSchemaVersion,
 };
+use serde_json::{json, Map, Value};
+use std::collections::HashMap;
 
 pub struct RedfishCollection {
     uri: String,
@@ -29,7 +23,9 @@ impl RedfishCollection {
         schema_name: String,
         name: String,
         members: Vec<String>,
-        post: Option<fn(&RedfishCollection, serde_json::Value) -> Result<RedfishResource, RedfishErr>>,
+        post: Option<
+            fn(&RedfishCollection, serde_json::Value) -> Result<RedfishResource, RedfishErr>,
+        >,
     ) -> Self {
         Self {
             uri: String::from(uri),
@@ -105,13 +101,26 @@ impl RedfishResource {
         let mut body = rest.as_object().unwrap().clone();
         body.insert(String::from("@odata.id"), json!(uri));
         body.insert(String::from("@odata.etag"), json!("\"FIXME\""));
-        body.insert(String::from("@odata.type"), json!(format!("#{}.{}.{}", schema_name, schema_version.to_str(), term_name)));
+        body.insert(
+            String::from("@odata.type"),
+            json!(format!(
+                "#{}.{}.{}",
+                schema_name,
+                schema_version.to_str(),
+                term_name
+            )),
+        );
         let id = get_uri_id(uri);
         body.insert(String::from("Id"), json!(id));
         body.insert(String::from("Name"), json!(name));
         let resource_type = RedfishResourceType::new_dmtf(schema_name, schema_version);
         Self {
-            uri: String::from(uri), resource_type, body, delete, patch, collection,
+            uri: String::from(uri),
+            resource_type,
+            body,
+            delete,
+            patch,
+            collection,
         }
     }
 }
@@ -153,13 +162,13 @@ impl MockTree {
             collections: HashMap::new(),
             collection_types: Vec::new(),
             resource_types: Vec::new(),
-         }
+        }
     }
 
     pub fn add_resource(&mut self, resource: RedfishResource) {
         let resource_type = resource.resource_type.clone();
         self.resources.insert(resource.uri.clone(), resource);
-        if ! self.resource_types.contains(&resource_type) {
+        if !self.resource_types.contains(&resource_type) {
             self.resource_types.push(resource_type);
         }
     }
@@ -167,7 +176,7 @@ impl MockTree {
     pub fn add_collection(&mut self, collection: RedfishCollection) {
         let collection_type = collection.resource_type.clone();
         self.collections.insert(collection.uri.clone(), collection);
-        if ! self.collection_types.contains(&collection_type) {
+        if !self.collection_types.contains(&collection_type) {
             self.collection_types.push(collection_type);
         }
     }
@@ -187,7 +196,12 @@ impl RedfishTree for MockTree {
         Err(RedfishErr::NotFound)
     }
 
-    fn create(&mut self, uri: &str, req: serde_json::Value, username: Option<&str>) -> Result<&dyn RedfishNode, RedfishErr> {
+    fn create(
+        &mut self,
+        uri: &str,
+        req: serde_json::Value,
+        username: Option<&str>,
+    ) -> Result<&dyn RedfishNode, RedfishErr> {
         if uri != "/redfish/v1/SessionService/Sessions" && username.is_none() {
             return Err(RedfishErr::Unauthorized);
         }
@@ -197,7 +211,9 @@ impl RedfishTree for MockTree {
                 None => Err(RedfishErr::NotFound),
             },
             Some(collection) => match collection.post {
-                None => Err(RedfishErr::MethodNotAllowed(collection.get_allowed_methods())),
+                None => Err(RedfishErr::MethodNotAllowed(
+                    collection.get_allowed_methods(),
+                )),
                 Some(post) => {
                     let member = post(collection, req)?;
                     let member_uri = member.uri.clone();
@@ -217,7 +233,9 @@ impl RedfishTree for MockTree {
         }
         match self.resources.get(uri) {
             None => match self.collections.get(uri) {
-                Some(collection) => Err(RedfishErr::MethodNotAllowed(collection.get_allowed_methods())),
+                Some(collection) => Err(RedfishErr::MethodNotAllowed(
+                    collection.get_allowed_methods(),
+                )),
                 None => Err(RedfishErr::NotFound),
             },
             Some(resource) => match resource.delete {
@@ -226,7 +244,9 @@ impl RedfishTree for MockTree {
                     delete(resource)?;
                     if let Some(collection_uri) = &resource.collection {
                         if let Some(collection) = self.collections.get_mut(collection_uri) {
-                            if let Some(member_index) = collection.members.iter().position(|x| x == uri) {
+                            if let Some(member_index) =
+                                collection.members.iter().position(|x| x == uri)
+                            {
                                 collection.members.remove(member_index);
                             }
                         }
@@ -238,13 +258,20 @@ impl RedfishTree for MockTree {
         }
     }
 
-    fn patch(&mut self, uri: &str, req: serde_json::Value, username: Option<&str>) -> Result<&dyn RedfishNode, RedfishErr> {
+    fn patch(
+        &mut self,
+        uri: &str,
+        req: serde_json::Value,
+        username: Option<&str>,
+    ) -> Result<&dyn RedfishNode, RedfishErr> {
         if username.is_none() {
             return Err(RedfishErr::Unauthorized);
         }
         match self.resources.get_mut(uri) {
             None => match self.collections.get(uri) {
-                Some(collection) => Err(RedfishErr::MethodNotAllowed(collection.get_allowed_methods())),
+                Some(collection) => Err(RedfishErr::MethodNotAllowed(
+                    collection.get_allowed_methods(),
+                )),
                 None => Err(RedfishErr::NotFound),
             },
             Some(resource) => match resource.patch {
@@ -252,7 +279,7 @@ impl RedfishTree for MockTree {
                 Some(patch) => {
                     patch(resource, req)?;
                     Ok(resource)
-                },
+                }
             },
         }
     }

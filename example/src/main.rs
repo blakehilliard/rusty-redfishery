@@ -1,19 +1,16 @@
-use axum::{
-    ServiceExt,
-    Router,
-};
-use tower_http::normalize_path::{NormalizePath};
+use axum::{Router, ServiceExt};
+use redfish_axum::{RedfishErr, RedfishNode};
+use redfish_data::{get_uri_id, RedfishResourceSchemaVersion};
 use serde_json::{json, Value};
-use redfish_axum::{RedfishNode, RedfishErr};
-use redfish_data::{
-    RedfishResourceSchemaVersion,
-    get_uri_id,
-};
+use tower_http::normalize_path::NormalizePath;
 
 mod tree;
 use tree::{MockTree, RedfishCollection, RedfishResource};
 
-fn create_session(collection: &RedfishCollection, req: Value) -> Result<RedfishResource, RedfishErr> {
+fn create_session(
+    collection: &RedfishCollection,
+    req: Value,
+) -> Result<RedfishResource, RedfishErr> {
     // Look at existing members to see next Id to pick
     let mut highest = 0;
     for member in collection.members.iter() {
@@ -33,7 +30,7 @@ fn create_session(collection: &RedfishCollection, req: Value) -> Result<RedfishR
         RedfishResourceSchemaVersion::new(1, 6, 0),
         String::from("Session"),
         String::from(format!("Session {}", id)),
-        Some(|_| { Ok(()) }),
+        Some(|_| Ok(())),
         None,
         Some(String::from(collection.get_uri())),
         json!({
@@ -45,7 +42,13 @@ fn create_session(collection: &RedfishCollection, req: Value) -> Result<RedfishR
 
 fn patch_session_service(resource: &mut RedfishResource, req: Value) -> Result<(), RedfishErr> {
     // TODO: Allow patch that doesn't set this! And do correct error handling!
-    let new_timeout = req.as_object().unwrap().get("SessionTimeout").unwrap().as_u64().unwrap();
+    let new_timeout = req
+        .as_object()
+        .unwrap()
+        .get("SessionTimeout")
+        .unwrap()
+        .as_u64()
+        .unwrap();
     resource.body["SessionTimeout"] = Value::from(new_timeout);
     Ok(())
 }
@@ -73,7 +76,7 @@ fn get_mock_tree() -> MockTree {
             "SessionService": {
                 "@odata.id": "/redfish/v1/SessionService",
             },
-        })
+        }),
     ));
     tree.add_resource(RedfishResource::new(
         "/redfish/v1/SessionService",
@@ -90,7 +93,7 @@ fn get_mock_tree() -> MockTree {
             "Sessions": {
                 "@odata.id": "/redfish/v1/SessionService/Sessions"
             },
-        })
+        }),
     ));
     tree.add_collection(RedfishCollection::new(
         "/redfish/v1/SessionService/Sessions",
@@ -115,7 +118,7 @@ fn get_mock_tree() -> MockTree {
             "Roles": {
                 "@odata.id": "/redfish/v1/AccountService/Roles"
             }
-        })
+        }),
     ));
     tree.add_collection(RedfishCollection::new(
         "/redfish/v1/AccountService/Accounts",
@@ -144,7 +147,7 @@ fn get_mock_tree() -> MockTree {
             "Password": null,
             "RoleId": "Administrator",
             "UserName": "admin",
-        })
+        }),
     ));
     tree.add_collection(RedfishCollection::new(
         "/redfish/v1/AccountService/Roles",
@@ -176,7 +179,7 @@ fn get_mock_tree() -> MockTree {
             ],
             "IsPredefined": true,
             "RoleId": "Administrator",
-        })
+        }),
     ));
     tree.add_resource(RedfishResource::new(
         "/redfish/v1/AccountService/Roles/Operator",
@@ -195,7 +198,7 @@ fn get_mock_tree() -> MockTree {
             ],
             "IsPredefined": true,
             "RoleId": "Operator",
-        })
+        }),
     ));
     tree.add_resource(RedfishResource::new(
         "/redfish/v1/AccountService/Roles/ReadOnly",
@@ -213,7 +216,7 @@ fn get_mock_tree() -> MockTree {
             ],
             "IsPredefined": true,
             "RoleId": "ReadOnly",
-        })
+        }),
     ));
     tree
 }
@@ -235,13 +238,13 @@ async fn main() {
 mod tests {
     use super::*;
     use axum::{
-        response::Response,
         body::Body,
         http::{Request, StatusCode},
+        response::Response,
     };
-    use http::{HeaderValue, request::Builder};
+    use http::{request::Builder, HeaderValue};
     use serde_json::{json, Value};
-    use tower::{ServiceExt, Service};
+    use tower::{Service, ServiceExt};
 
     enum Auth {
         Token(String),
@@ -254,11 +257,11 @@ mod tests {
             Auth::Token(token) => {
                 let headers = req.headers_mut().unwrap();
                 headers.insert("x-auth-token", HeaderValue::from_str(&token).unwrap());
-            },
+            }
             Auth::Basic(header_val) => {
                 let headers = req.headers_mut().unwrap();
                 headers.insert("authorization", HeaderValue::from_str(&header_val).unwrap());
-            },
+            }
             _ => (),
         }
     }
@@ -281,7 +284,13 @@ mod tests {
         serde_json::from_slice(&body).unwrap()
     }
 
-    async fn jget(app: &mut NormalizePath<Router>, uri: &str, status_code: StatusCode, auth: &Auth, headers: &[(&str, &str)]) -> Value {
+    async fn jget(
+        app: &mut NormalizePath<Router>,
+        uri: &str,
+        status_code: StatusCode,
+        auth: &Auth,
+        headers: &[(&str, &str)],
+    ) -> Value {
         let response = get(app, uri, auth).await;
         assert_eq!(response.status(), status_code);
         assert_eq!(get_header(&response, "OData-Version"), "4.0");
@@ -298,12 +307,24 @@ mod tests {
 
     async fn login(app: &mut NormalizePath<Router>) -> (Auth, String) {
         let data = json!({"UserName": "Obiwan", "Password": "n/a"});
-        let response = post(app, "/redfish/v1/SessionService/Sessions", data, &Auth::None).await;
+        let response = post(
+            app,
+            "/redfish/v1/SessionService/Sessions",
+            data,
+            &Auth::None,
+        )
+        .await;
         assert_eq!(response.status(), StatusCode::CREATED);
         assert_eq!(get_header(&response, "OData-Version"), "4.0");
-        assert_eq!(get_header(&response, "Location"), "/redfish/v1/SessionService/Sessions/1");
+        assert_eq!(
+            get_header(&response, "Location"),
+            "/redfish/v1/SessionService/Sessions/1"
+        );
         assert_eq!(get_header(&response, "cache-control"), "no-cache");
-        assert_eq!(get_header(&response, "Link"), "<https://redfish.dmtf.org/schemas/v1/Session.v1_6_0.json>; rel=describedby");
+        assert_eq!(
+            get_header(&response, "Link"),
+            "<https://redfish.dmtf.org/schemas/v1/Session.v1_6_0.json>; rel=describedby"
+        );
         (
             Auth::Token(get_header(&response, "X-Auth-Token").to_string()),
             get_header(&response, "Location").to_string(),
@@ -317,7 +338,12 @@ mod tests {
         app.ready().await.unwrap().call(req).await.unwrap()
     }
 
-    async fn post(app: &mut NormalizePath<Router>, uri: &str, req: serde_json::Value, auth: &Auth) -> Response {
+    async fn post(
+        app: &mut NormalizePath<Router>,
+        uri: &str,
+        req: serde_json::Value,
+        auth: &Auth,
+    ) -> Response {
         let body = Body::from(serde_json::to_vec(&req).unwrap());
         let mut req = Request::post(uri).header("Content-Type", "application/json");
         add_auth_headers(&mut req, auth);
@@ -325,7 +351,12 @@ mod tests {
         app.ready().await.unwrap().call(req).await.unwrap()
     }
 
-    async fn patch(app: &mut NormalizePath<Router>, uri: &str, req: serde_json::Value, auth: &Auth) -> Response {
+    async fn patch(
+        app: &mut NormalizePath<Router>,
+        uri: &str,
+        req: serde_json::Value,
+        auth: &Auth,
+    ) -> Response {
         let body = Body::from(serde_json::to_vec(&req).unwrap());
         let mut req = Request::patch(uri).header("Content-Type", "application/json");
         add_auth_headers(&mut req, auth);
@@ -335,13 +366,23 @@ mod tests {
 
     fn validate_unauthorized(response: &Response) {
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        assert_eq!(get_header(&response, "www-authenticate"), "Basic realm=\"simple\"");
+        assert_eq!(
+            get_header(&response, "www-authenticate"),
+            "Basic realm=\"simple\""
+        );
     }
 
     #[tokio::test]
     async fn base_redfish_path() {
         let mut app = app();
-        let body = jget(&mut app, "/redfish", StatusCode::OK, &Auth::None, &[("allow", "GET,HEAD")]).await;
+        let body = jget(
+            &mut app,
+            "/redfish",
+            StatusCode::OK,
+            &Auth::None,
+            &[("allow", "GET,HEAD")],
+        )
+        .await;
         assert_eq!(body, json!({ "v1": "/redfish/v1/" }));
     }
 
@@ -354,7 +395,10 @@ mod tests {
         assert_eq!(get_header(&response, "content-type"), "application/json");
         assert_eq!(get_header(&response, "OData-Version"), "4.0");
         assert_eq!(get_header(&response, "cache-control"), "no-cache");
-        assert_eq!(get_header(&response, "Link"), "<https://redfish.dmtf.org/schemas/v1/ServiceRoot.v1_15_0.json>; rel=describedby");
+        assert_eq!(
+            get_header(&response, "Link"),
+            "<https://redfish.dmtf.org/schemas/v1/ServiceRoot.v1_15_0.json>; rel=describedby"
+        );
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         assert_eq!(body, "");
     }
@@ -368,51 +412,64 @@ mod tests {
                 ("allow", "GET,HEAD"),
                 ("link", "<https://redfish.dmtf.org/schemas/v1/ServiceRoot.v1_15_0.json>; rel=describedby"),
             ]).await;
-        assert_eq!(body, json!({
-            "@odata.etag": "\"FIXME\"",
-            "@odata.id": "/redfish/v1",
-            "@odata.type": "#ServiceRoot.v1_15_0.ServiceRoot",
-            "Id": "RootService",
-            "Name": "Root Service",
-            "AccountService": {
-                "@odata.id": "/redfish/v1/AccountService",
-            },
-            "Links": {
-                "Sessions": {
-                    "@odata.id": "/redfish/v1/SessionService/Sessions"
+        assert_eq!(
+            body,
+            json!({
+                "@odata.etag": "\"FIXME\"",
+                "@odata.id": "/redfish/v1",
+                "@odata.type": "#ServiceRoot.v1_15_0.ServiceRoot",
+                "Id": "RootService",
+                "Name": "Root Service",
+                "AccountService": {
+                    "@odata.id": "/redfish/v1/AccountService",
+                },
+                "Links": {
+                    "Sessions": {
+                        "@odata.id": "/redfish/v1/SessionService/Sessions"
+                    }
+                },
+                "SessionService": {
+                    "@odata.id": "/redfish/v1/SessionService",
                 }
-            },
-            "SessionService": {
-                "@odata.id": "/redfish/v1/SessionService",
-            }
-        }));
+            })
+        );
     }
 
     #[tokio::test]
     async fn get_odata_service_doc() {
         let mut app = app();
-        let body = jget(&mut app, "/redfish/v1/odata", StatusCode::OK, &Auth::None, &[("allow", "GET,HEAD")]).await;
-        assert_eq!(body, json!({
-            "@odata.id": "/redfish/v1/odata",
-            "@odata.context": "/redfish/v1/$metadata",
-            "value": [
-                {
-                    "kind": "Singleton",
-                    "name": "v1",
-                    "url": "/redfish/v1",
-                },
-                {
-                    "kind": "Singleton",
-                    "name": "AccountService",
-                    "url": "/redfish/v1/AccountService",
-                },
-                {
-                    "kind": "Singleton",
-                    "name": "SessionService",
-                    "url": "/redfish/v1/SessionService",
-                },
-            ],
-        }));
+        let body = jget(
+            &mut app,
+            "/redfish/v1/odata",
+            StatusCode::OK,
+            &Auth::None,
+            &[("allow", "GET,HEAD")],
+        )
+        .await;
+        assert_eq!(
+            body,
+            json!({
+                "@odata.id": "/redfish/v1/odata",
+                "@odata.context": "/redfish/v1/$metadata",
+                "value": [
+                    {
+                        "kind": "Singleton",
+                        "name": "v1",
+                        "url": "/redfish/v1",
+                    },
+                    {
+                        "kind": "Singleton",
+                        "name": "AccountService",
+                        "url": "/redfish/v1/AccountService",
+                    },
+                    {
+                        "kind": "Singleton",
+                        "name": "SessionService",
+                        "url": "/redfish/v1/SessionService",
+                    },
+                ],
+            })
+        );
     }
 
     #[tokio::test]
@@ -426,7 +483,9 @@ mod tests {
 
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         let body = std::str::from_utf8(&body).unwrap();
-        assert_eq!(body, r#"<?xml version="1.0" encoding="UTF-8"?>
+        assert_eq!(
+            body,
+            r#"<?xml version="1.0" encoding="UTF-8"?>
 <edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" Version="4.0">
   <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/SessionCollection_v1.xml">
     <edmx:Include Namespace="SessionCollection" />
@@ -466,7 +525,8 @@ mod tests {
     </Schema>
   </edmx:DataServices>
 </edmx:Edmx>
-"#);
+"#
+        );
     }
 
     #[tokio::test]
@@ -521,101 +581,144 @@ mod tests {
                 ("etag", "\"FIXME\""),
             ],
         ).await;
-        assert_eq!(body, json!({
-            "@odata.etag": "\"FIXME\"",
-            "@odata.id": "/redfish/v1/SessionService",
-            "@odata.type": "#SessionService.v1_1_8.SessionService",
-            "@Redfish.WriteableProperties": ["SessionTimeout"],
-            "Id": "SessionService",
-            "Name": "Session Service",
-            "SessionTimeout": 600,
-            "Sessions" : {"@odata.id": "/redfish/v1/SessionService/Sessions"},
-        }));
+        assert_eq!(
+            body,
+            json!({
+                "@odata.etag": "\"FIXME\"",
+                "@odata.id": "/redfish/v1/SessionService",
+                "@odata.type": "#SessionService.v1_1_8.SessionService",
+                "@Redfish.WriteableProperties": ["SessionTimeout"],
+                "Id": "SessionService",
+                "Name": "Session Service",
+                "SessionTimeout": 600,
+                "Sessions" : {"@odata.id": "/redfish/v1/SessionService/Sessions"},
+            })
+        );
     }
 
     #[tokio::test]
     async fn get_session_collection() {
         let mut app = app();
         let body = jget(
-            &mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, &admin_admin_basic_auth(),
+            &mut app,
+            "/redfish/v1/SessionService/Sessions",
+            StatusCode::OK,
+            &admin_admin_basic_auth(),
             &[
                 ("allow", "GET,HEAD,POST"),
-                ("link", "<https://redfish.dmtf.org/schemas/v1/SessionCollection.json>; rel=describedby"),
+                (
+                    "link",
+                    "<https://redfish.dmtf.org/schemas/v1/SessionCollection.json>; rel=describedby",
+                ),
                 ("etag", "\"FIXME\""),
             ],
-        ).await;
-        assert_eq!(body, json!({
-            "@odata.etag": "\"FIXME\"",
-            "@odata.id": "/redfish/v1/SessionService/Sessions",
-            "@odata.type": "#SessionCollection.SessionCollection",
-            "Name": "Session Collection",
-            "Members" : [],
-            "Members@odata.count": 0,
-        }));
+        )
+        .await;
+        assert_eq!(
+            body,
+            json!({
+                "@odata.etag": "\"FIXME\"",
+                "@odata.id": "/redfish/v1/SessionService/Sessions",
+                "@odata.type": "#SessionCollection.SessionCollection",
+                "Name": "Session Collection",
+                "Members" : [],
+                "Members@odata.count": 0,
+            })
+        );
     }
 
     #[tokio::test]
     async fn default_administrator_role() {
         let mut app = app();
         let (token, _) = login(&mut app).await;
-        let body = jget(&mut app, "/redfish/v1/AccountService/Roles/Administrator", StatusCode::OK, &token, &[]).await;
-        assert_eq!(body, json!({
-            "@odata.etag": "\"FIXME\"",
-            "@odata.id": "/redfish/v1/AccountService/Roles/Administrator",
-            "@odata.type": "#Role.v1_3_1.Role",
-            "Id": "Administrator",
-            "Name": "Administrator Role",
-            "AssignedPrivileges": [
-                "Login",
-                "ConfigureManager",
-                "ConfigureUsers",
-                "ConfigureSelf",
-                "ConfigureComponents",
-            ],
-            "IsPredefined": true,
-            "RoleId": "Administrator",
-        }));
+        let body = jget(
+            &mut app,
+            "/redfish/v1/AccountService/Roles/Administrator",
+            StatusCode::OK,
+            &token,
+            &[],
+        )
+        .await;
+        assert_eq!(
+            body,
+            json!({
+                "@odata.etag": "\"FIXME\"",
+                "@odata.id": "/redfish/v1/AccountService/Roles/Administrator",
+                "@odata.type": "#Role.v1_3_1.Role",
+                "Id": "Administrator",
+                "Name": "Administrator Role",
+                "AssignedPrivileges": [
+                    "Login",
+                    "ConfigureManager",
+                    "ConfigureUsers",
+                    "ConfigureSelf",
+                    "ConfigureComponents",
+                ],
+                "IsPredefined": true,
+                "RoleId": "Administrator",
+            })
+        );
     }
 
     #[tokio::test]
     async fn default_operator_role() {
         let mut app = app();
         let (token, _) = login(&mut app).await;
-        let body = jget(&mut app, "/redfish/v1/AccountService/Roles/Operator", StatusCode::OK, &token, &[]).await;
-        assert_eq!(body, json!({
-            "@odata.etag": "\"FIXME\"",
-            "@odata.id": "/redfish/v1/AccountService/Roles/Operator",
-            "@odata.type": "#Role.v1_3_1.Role",
-            "Id": "Operator",
-            "Name": "Operator Role",
-            "AssignedPrivileges": [
-                "Login",
-                "ConfigureSelf",
-                "ConfigureComponents",
-            ],
-            "IsPredefined": true,
-            "RoleId": "Operator",
-        }));
+        let body = jget(
+            &mut app,
+            "/redfish/v1/AccountService/Roles/Operator",
+            StatusCode::OK,
+            &token,
+            &[],
+        )
+        .await;
+        assert_eq!(
+            body,
+            json!({
+                "@odata.etag": "\"FIXME\"",
+                "@odata.id": "/redfish/v1/AccountService/Roles/Operator",
+                "@odata.type": "#Role.v1_3_1.Role",
+                "Id": "Operator",
+                "Name": "Operator Role",
+                "AssignedPrivileges": [
+                    "Login",
+                    "ConfigureSelf",
+                    "ConfigureComponents",
+                ],
+                "IsPredefined": true,
+                "RoleId": "Operator",
+            })
+        );
     }
 
     #[tokio::test]
     async fn default_readonly_role() {
         let mut app = app();
         let (token, _) = login(&mut app).await;
-        let body = jget(&mut app, "/redfish/v1/AccountService/Roles/ReadOnly", StatusCode::OK, &token, &[]).await;
-        assert_eq!(body, json!({
-            "@odata.etag": "\"FIXME\"",
-            "@odata.id": "/redfish/v1/AccountService/Roles/ReadOnly",
-            "@odata.type": "#Role.v1_3_1.Role",
-            "Id": "ReadOnly",
-            "Name": "ReadOnly Role",
-            "AssignedPrivileges": [
-                "ConfigureSelf",
-                "Login",
-            ],
-            "IsPredefined": true,
-            "RoleId": "ReadOnly",
-        }));
+        let body = jget(
+            &mut app,
+            "/redfish/v1/AccountService/Roles/ReadOnly",
+            StatusCode::OK,
+            &token,
+            &[],
+        )
+        .await;
+        assert_eq!(
+            body,
+            json!({
+                "@odata.etag": "\"FIXME\"",
+                "@odata.id": "/redfish/v1/AccountService/Roles/ReadOnly",
+                "@odata.type": "#Role.v1_3_1.Role",
+                "Id": "ReadOnly",
+                "Name": "ReadOnly Role",
+                "AssignedPrivileges": [
+                    "ConfigureSelf",
+                    "Login",
+                ],
+                "IsPredefined": true,
+                "RoleId": "ReadOnly",
+            })
+        );
     }
 
     #[tokio::test]
@@ -655,7 +758,13 @@ mod tests {
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
         assert_eq!(get_header(&response, "allow"), "GET,HEAD");
 
-        let response = patch(&mut app, "/redfish/v1/SessionService/Sessions", json!({}), &token).await;
+        let response = patch(
+            &mut app,
+            "/redfish/v1/SessionService/Sessions",
+            json!({}),
+            &token,
+        )
+        .await;
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
         assert_eq!(get_header(&response, "allow"), "GET,HEAD,POST");
     }
@@ -670,40 +779,65 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(get_header(&response, "allow"), "GET,HEAD,PATCH");
         assert_eq!(get_header(&response, "cache-control"), "no-cache");
-        assert_eq!(get_header(&response, "Link"), "<https://redfish.dmtf.org/schemas/v1/SessionService.v1_1_8.json>; rel=describedby");
+        assert_eq!(
+            get_header(&response, "Link"),
+            "<https://redfish.dmtf.org/schemas/v1/SessionService.v1_1_8.json>; rel=describedby"
+        );
         assert_eq!(get_header(&response, "etag"), "\"FIXME\"");
 
         let body = get_response_json(response).await;
-        assert_eq!(body, json!({
-            "@odata.etag": "\"FIXME\"",
-            "@odata.id": "/redfish/v1/SessionService",
-            "@odata.type": "#SessionService.v1_1_8.SessionService",
-            "@Redfish.WriteableProperties": ["SessionTimeout"],
-            "Id": "SessionService",
-            "Name": "Session Service",
-            "SessionTimeout": 300,
-            "Sessions" : {"@odata.id": "/redfish/v1/SessionService/Sessions"},
-        }));
+        assert_eq!(
+            body,
+            json!({
+                "@odata.etag": "\"FIXME\"",
+                "@odata.id": "/redfish/v1/SessionService",
+                "@odata.type": "#SessionService.v1_1_8.SessionService",
+                "@Redfish.WriteableProperties": ["SessionTimeout"],
+                "Id": "SessionService",
+                "Name": "Session Service",
+                "SessionTimeout": 300,
+                "Sessions" : {"@odata.id": "/redfish/v1/SessionService/Sessions"},
+            })
+        );
 
-        let body = jget(&mut app, "/redfish/v1/SessionService/", StatusCode::OK, &token, &[("allow", "GET,HEAD,PATCH")]).await;
-        assert_eq!(body, json!({
-            "@odata.etag": "\"FIXME\"",
-            "@odata.id": "/redfish/v1/SessionService",
-            "@odata.type": "#SessionService.v1_1_8.SessionService",
-            "@Redfish.WriteableProperties": ["SessionTimeout"],
-            "Id": "SessionService",
-            "Name": "Session Service",
-            "SessionTimeout": 300,
-            "Sessions" : {"@odata.id": "/redfish/v1/SessionService/Sessions"},
-        }));
+        let body = jget(
+            &mut app,
+            "/redfish/v1/SessionService/",
+            StatusCode::OK,
+            &token,
+            &[("allow", "GET,HEAD,PATCH")],
+        )
+        .await;
+        assert_eq!(
+            body,
+            json!({
+                "@odata.etag": "\"FIXME\"",
+                "@odata.id": "/redfish/v1/SessionService",
+                "@odata.type": "#SessionService.v1_1_8.SessionService",
+                "@Redfish.WriteableProperties": ["SessionTimeout"],
+                "Id": "SessionService",
+                "Name": "Session Service",
+                "SessionTimeout": 300,
+                "Sessions" : {"@odata.id": "/redfish/v1/SessionService/Sessions"},
+            })
+        );
 
         // Ensure basic auth works too
         let data = json!({"SessionTimeout": 600});
-        let response = patch(&mut app, "/redfish/v1/SessionService", data, &admin_admin_basic_auth()).await;
+        let response = patch(
+            &mut app,
+            "/redfish/v1/SessionService",
+            data,
+            &admin_admin_basic_auth(),
+        )
+        .await;
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(get_header(&response, "allow"), "GET,HEAD,PATCH");
         assert_eq!(get_header(&response, "cache-control"), "no-cache");
-        assert_eq!(get_header(&response, "Link"), "<https://redfish.dmtf.org/schemas/v1/SessionService.v1_1_8.json>; rel=describedby");
+        assert_eq!(
+            get_header(&response, "Link"),
+            "<https://redfish.dmtf.org/schemas/v1/SessionService.v1_1_8.json>; rel=describedby"
+        );
     }
 
     #[tokio::test]
@@ -712,113 +846,211 @@ mod tests {
 
         // Create session 1
         let data = json!({"UserName": "admin", "Password": "admin"});
-        let response = post(&mut app, "/redfish/v1/SessionService/Sessions", data, &Auth::None).await;
+        let response = post(
+            &mut app,
+            "/redfish/v1/SessionService/Sessions",
+            data,
+            &Auth::None,
+        )
+        .await;
         assert_eq!(response.status(), StatusCode::CREATED);
         assert_eq!(get_header(&response, "OData-Version"), "4.0");
-        assert_eq!(get_header(&response, "Location"), "/redfish/v1/SessionService/Sessions/1");
+        assert_eq!(
+            get_header(&response, "Location"),
+            "/redfish/v1/SessionService/Sessions/1"
+        );
         assert_eq!(get_header(&response, "cache-control"), "no-cache");
-        assert_eq!(get_header(&response, "Link"), "<https://redfish.dmtf.org/schemas/v1/Session.v1_6_0.json>; rel=describedby");
+        assert_eq!(
+            get_header(&response, "Link"),
+            "<https://redfish.dmtf.org/schemas/v1/Session.v1_6_0.json>; rel=describedby"
+        );
         assert_eq!(get_header(&response, "etag"), "\"FIXME\"");
         let token1 = Auth::Token(get_header(&response, "X-Auth-Token").to_string());
 
         // Create session 2
         let data = json!({"UserName": "Obiwan", "Password": "n/a"});
-        let response = post(&mut app, "/redfish/v1/SessionService/Sessions", data, &Auth::None).await;
+        let response = post(
+            &mut app,
+            "/redfish/v1/SessionService/Sessions",
+            data,
+            &Auth::None,
+        )
+        .await;
         assert_eq!(response.status(), StatusCode::CREATED);
         assert_eq!(get_header(&response, "OData-Version"), "4.0");
-        assert_eq!(get_header(&response, "Location"), "/redfish/v1/SessionService/Sessions/2");
+        assert_eq!(
+            get_header(&response, "Location"),
+            "/redfish/v1/SessionService/Sessions/2"
+        );
         assert_eq!(get_header(&response, "cache-control"), "no-cache");
-        assert_eq!(get_header(&response, "Link"), "<https://redfish.dmtf.org/schemas/v1/Session.v1_6_0.json>; rel=describedby");
+        assert_eq!(
+            get_header(&response, "Link"),
+            "<https://redfish.dmtf.org/schemas/v1/Session.v1_6_0.json>; rel=describedby"
+        );
         assert_eq!(get_header(&response, "etag"), "\"FIXME\"");
         let token2 = Auth::Token(get_header(&response, "X-Auth-Token").to_string());
 
         let body = get_response_json(response).await;
-        assert_eq!(body, json!({
-            "@odata.etag": "\"FIXME\"",
-            "@odata.id": "/redfish/v1/SessionService/Sessions/2",
-            "@odata.type": "#Session.v1_6_0.Session",
-            "Id": "2",
-            "Name": "Session 2",
-            "UserName": "Obiwan",
-            "Password": serde_json::Value::Null,
-        }));
+        assert_eq!(
+            body,
+            json!({
+                "@odata.etag": "\"FIXME\"",
+                "@odata.id": "/redfish/v1/SessionService/Sessions/2",
+                "@odata.type": "#Session.v1_6_0.Session",
+                "Id": "2",
+                "Name": "Session 2",
+                "UserName": "Obiwan",
+                "Password": serde_json::Value::Null,
+            })
+        );
 
         // GET the sessions and collection, ensure both tokens work
-        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/1", StatusCode::OK, &token2, &[("allow", "GET,HEAD,DELETE")]).await;
-        assert_eq!(body, json!({
-            "@odata.etag": "\"FIXME\"",
-            "@odata.id": "/redfish/v1/SessionService/Sessions/1",
-            "@odata.type": "#Session.v1_6_0.Session",
-            "Id": "1",
-            "Name": "Session 1",
-            "UserName": "admin",
-            "Password": serde_json::Value::Null,
-        }));
+        let body = jget(
+            &mut app,
+            "/redfish/v1/SessionService/Sessions/1",
+            StatusCode::OK,
+            &token2,
+            &[("allow", "GET,HEAD,DELETE")],
+        )
+        .await;
+        assert_eq!(
+            body,
+            json!({
+                "@odata.etag": "\"FIXME\"",
+                "@odata.id": "/redfish/v1/SessionService/Sessions/1",
+                "@odata.type": "#Session.v1_6_0.Session",
+                "Id": "1",
+                "Name": "Session 1",
+                "UserName": "admin",
+                "Password": serde_json::Value::Null,
+            })
+        );
 
-        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/2", StatusCode::OK, &token1, &[("allow", "GET,HEAD,DELETE")]).await;
-        assert_eq!(body, json!({
-            "@odata.etag": "\"FIXME\"",
-            "@odata.id": "/redfish/v1/SessionService/Sessions/2",
-            "@odata.type": "#Session.v1_6_0.Session",
-            "Id": "2",
-            "Name": "Session 2",
-            "UserName": "Obiwan",
-            "Password": serde_json::Value::Null,
-        }));
+        let body = jget(
+            &mut app,
+            "/redfish/v1/SessionService/Sessions/2",
+            StatusCode::OK,
+            &token1,
+            &[("allow", "GET,HEAD,DELETE")],
+        )
+        .await;
+        assert_eq!(
+            body,
+            json!({
+                "@odata.etag": "\"FIXME\"",
+                "@odata.id": "/redfish/v1/SessionService/Sessions/2",
+                "@odata.type": "#Session.v1_6_0.Session",
+                "Id": "2",
+                "Name": "Session 2",
+                "UserName": "Obiwan",
+                "Password": serde_json::Value::Null,
+            })
+        );
 
-        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, &token2, &[("allow", "GET,HEAD,POST")]).await;
-        assert_eq!(body, json!({
-            "@odata.etag": "\"FIXME\"",
-            "@odata.id": "/redfish/v1/SessionService/Sessions",
-            "@odata.type": "#SessionCollection.SessionCollection",
-            "Name": "Session Collection",
-            "Members" : [
-                {"@odata.id": "/redfish/v1/SessionService/Sessions/1"},
-                {"@odata.id": "/redfish/v1/SessionService/Sessions/2"},
-            ],
-            "Members@odata.count": 2,
-        }));
+        let body = jget(
+            &mut app,
+            "/redfish/v1/SessionService/Sessions",
+            StatusCode::OK,
+            &token2,
+            &[("allow", "GET,HEAD,POST")],
+        )
+        .await;
+        assert_eq!(
+            body,
+            json!({
+                "@odata.etag": "\"FIXME\"",
+                "@odata.id": "/redfish/v1/SessionService/Sessions",
+                "@odata.type": "#SessionCollection.SessionCollection",
+                "Name": "Session Collection",
+                "Members" : [
+                    {"@odata.id": "/redfish/v1/SessionService/Sessions/1"},
+                    {"@odata.id": "/redfish/v1/SessionService/Sessions/2"},
+                ],
+                "Members@odata.count": 2,
+            })
+        );
 
         // DELETE a session
         let response = delete(&mut app, "/redfish/v1/SessionService/Sessions/1", &token2).await;
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
-        assert_eq!(response.headers().get("cache-control").unwrap().to_str().unwrap(), "no-cache");
+        assert_eq!(
+            response
+                .headers()
+                .get("cache-control")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "no-cache"
+        );
 
         // Ensure it is gone and that remaining token still works
-        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions", StatusCode::OK, &token2, &[("allow", "GET,HEAD,POST")]).await;
-        assert_eq!(body, json!({
-            "@odata.etag": "\"FIXME\"",
-            "@odata.id": "/redfish/v1/SessionService/Sessions",
-            "@odata.type": "#SessionCollection.SessionCollection",
-            "Name": "Session Collection",
-            "Members" : [
-                {"@odata.id": "/redfish/v1/SessionService/Sessions/2"},
-            ],
-            "Members@odata.count": 1,
-        }));
+        let body = jget(
+            &mut app,
+            "/redfish/v1/SessionService/Sessions",
+            StatusCode::OK,
+            &token2,
+            &[("allow", "GET,HEAD,POST")],
+        )
+        .await;
+        assert_eq!(
+            body,
+            json!({
+                "@odata.etag": "\"FIXME\"",
+                "@odata.id": "/redfish/v1/SessionService/Sessions",
+                "@odata.type": "#SessionCollection.SessionCollection",
+                "Name": "Session Collection",
+                "Members" : [
+                    {"@odata.id": "/redfish/v1/SessionService/Sessions/2"},
+                ],
+                "Members@odata.count": 1,
+            })
+        );
 
         let response = get(&mut app, "/redfish/v1/SessionService/Sessions/1", &token2).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
-        let body = jget(&mut app, "/redfish/v1/SessionService/Sessions/2", StatusCode::OK, &token2, &[("allow", "GET,HEAD,DELETE")]).await;
-        assert_eq!(body, json!({
-            "@odata.etag": "\"FIXME\"",
-            "@odata.id": "/redfish/v1/SessionService/Sessions/2",
-            "@odata.type": "#Session.v1_6_0.Session",
-            "Id": "2",
-            "Name": "Session 2",
-            "UserName": "Obiwan",
-            "Password": serde_json::Value::Null,
-        }));
+        let body = jget(
+            &mut app,
+            "/redfish/v1/SessionService/Sessions/2",
+            StatusCode::OK,
+            &token2,
+            &[("allow", "GET,HEAD,DELETE")],
+        )
+        .await;
+        assert_eq!(
+            body,
+            json!({
+                "@odata.etag": "\"FIXME\"",
+                "@odata.id": "/redfish/v1/SessionService/Sessions/2",
+                "@odata.type": "#Session.v1_6_0.Session",
+                "Id": "2",
+                "Name": "Session 2",
+                "UserName": "Obiwan",
+                "Password": serde_json::Value::Null,
+            })
+        );
 
         // Ensure token of deleted session does not work
         let response = get(&mut app, "/redfish/v1/SessionService/Sessions", &token1).await;
         validate_unauthorized(&response);
 
         // DELETE other session using basic auth
-        let response = delete(&mut app, "/redfish/v1/SessionService/Sessions/2", &admin_admin_basic_auth()).await;
+        let response = delete(
+            &mut app,
+            "/redfish/v1/SessionService/Sessions/2",
+            &admin_admin_basic_auth(),
+        )
+        .await;
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
-        assert_eq!(response.headers().get("cache-control").unwrap().to_str().unwrap(), "no-cache");
+        assert_eq!(
+            response
+                .headers()
+                .get("cache-control")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "no-cache"
+        );
 
         // Ensure its token doesn't work anymore either
         let response = get(&mut app, "/redfish/v1/SessionService/Sessions", &token2).await;
@@ -829,10 +1061,19 @@ mod tests {
     async fn post_to_members() {
         let mut app = app();
         let data = json!({"UserName": "Obiwan", "Password": "n/a"});
-        let response = post(&mut app, "/redfish/v1/SessionService/Sessions/Members", data, &Auth::None).await;
+        let response = post(
+            &mut app,
+            "/redfish/v1/SessionService/Sessions/Members",
+            data,
+            &Auth::None,
+        )
+        .await;
         assert_eq!(response.status(), StatusCode::CREATED);
         assert_eq!(get_header(&response, "OData-Version"), "4.0");
-        assert_eq!(get_header(&response, "Location"), "/redfish/v1/SessionService/Sessions/1");
+        assert_eq!(
+            get_header(&response, "Location"),
+            "/redfish/v1/SessionService/Sessions/1"
+        );
     }
 
     #[tokio::test]
@@ -891,7 +1132,10 @@ mod tests {
     #[tokio::test]
     async fn get_bad_odata_version() {
         let mut app = app();
-        let request = Request::get("/redfish/v1").header("OData-Version", "4.1").body(Body::empty()).unwrap();
+        let request = Request::get("/redfish/v1")
+            .header("OData-Version", "4.1")
+            .body(Body::empty())
+            .unwrap();
         let response = app.ready().await.unwrap().call(request).await.unwrap();
         assert_eq!(response.status(), StatusCode::PRECONDITION_FAILED);
     }
@@ -927,7 +1171,10 @@ mod tests {
     #[tokio::test]
     async fn delete_bad_odata_version() {
         let mut app = app();
-        let request = Request::delete("/redfish/v1/SessionService/Sessions/1").header("OData-Version", "4.1").body(Body::empty()).unwrap();
+        let request = Request::delete("/redfish/v1/SessionService/Sessions/1")
+            .header("OData-Version", "4.1")
+            .body(Body::empty())
+            .unwrap();
         let response = app.ready().await.unwrap().call(request).await.unwrap();
         assert_eq!(response.status(), StatusCode::PRECONDITION_FAILED);
     }

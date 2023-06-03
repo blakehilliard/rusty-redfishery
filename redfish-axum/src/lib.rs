@@ -1,27 +1,24 @@
-use std::{sync::{Arc, Mutex}};
 use axum::{
-    extract::{
-        Path,
-        State,
-    },
+    extract::{Path, State},
     http::StatusCode,
-    routing::{get},
-    response::{Json, Response, IntoResponse},
+    response::{IntoResponse, Json, Response},
+    routing::get,
     Router,
 };
-use http_auth_basic;
-use tower_http::normalize_path::{NormalizePath, NormalizePathLayer};
-use tower::layer::Layer;
-use serde_json::{json};
-use http::{header::{self}, HeaderMap, HeaderValue, HeaderName};
-use uuid::Uuid;
-use redfish_data::{
-    RedfishCollectionType,
-    RedfishResourceType,
-    AllowedMethods,
-    get_odata_metadata_document,
-    get_odata_service_document,
+use http::{
+    header::{self},
+    HeaderMap, HeaderName, HeaderValue,
 };
+use http_auth_basic;
+use redfish_data::{
+    get_odata_metadata_document, get_odata_service_document, AllowedMethods, RedfishCollectionType,
+    RedfishResourceType,
+};
+use serde_json::json;
+use std::sync::{Arc, Mutex};
+use tower::layer::Layer;
+use tower_http::normalize_path::{NormalizePath, NormalizePathLayer};
+use uuid::Uuid;
 
 mod json;
 use json::JsonResponse;
@@ -55,7 +52,12 @@ pub trait RedfishTree {
     // If the request successfully provided credentials as a user, the username is given.
     // If the request did not attempt to authenticate, the username is None.
     // If the requested URI requires authentication, and the username is None, you must return RedfishErr::Unauthorized.
-    fn create(&mut self, uri: &str, req: serde_json::Value, username: Option<&str>) -> Result<&dyn RedfishNode, RedfishErr>;
+    fn create(
+        &mut self,
+        uri: &str,
+        req: serde_json::Value,
+        username: Option<&str>,
+    ) -> Result<&dyn RedfishNode, RedfishErr>;
 
     // Delete a resource, given its URI.
     // Return Ok after it has been deleted, or Error if it cannot be deleted.
@@ -69,7 +71,12 @@ pub trait RedfishTree {
     // If the request successfully provided credentials as a user, the username is given.
     // If the request did not attempt to authenticate, the username is None.
     // If the requested URI requires authentication, and the username is None, you must return RedfishErr::Unauthorized.
-    fn patch(&mut self, uri: &str, req: serde_json::Value, username: Option<&str>) -> Result<&dyn RedfishNode, RedfishErr>;
+    fn patch(
+        &mut self,
+        uri: &str,
+        req: serde_json::Value,
+        username: Option<&str>,
+    ) -> Result<&dyn RedfishNode, RedfishErr>;
 
     fn get_collection_types(&self) -> &[RedfishCollectionType];
 
@@ -84,17 +91,16 @@ pub fn app<T: RedfishTree + Send + Sync + 'static>(tree: T) -> NormalizePath<Rou
     };
 
     let app = Router::new()
-        .route("/redfish",
-               get(get_redfish))
-        .route("/redfish/v1/$metadata",
-               get(get_odata_metadata_doc))
+        .route("/redfish", get(get_redfish))
+        .route("/redfish/v1/$metadata", get(get_odata_metadata_doc))
         .route("/redfish/v1/odata", get(get_odata_service_doc))
-        .route("/redfish/*path",
-               get(getter).post(poster).delete(deleter).patch(patcher))
+        .route(
+            "/redfish/*path",
+            get(getter).post(poster).delete(deleter).patch(patcher),
+        )
         .with_state(state);
 
-    NormalizePathLayer::trim_trailing_slash()
-        .layer(app)
+    NormalizePathLayer::trim_trailing_slash().layer(app)
 }
 
 struct Session {
@@ -159,7 +165,7 @@ async fn deleter(
                 }
             }
             (StatusCode::NO_CONTENT, [("Cache-Control", "no-cache")]).into_response()
-        },
+        }
         Err(error) => get_error_response(error),
     }
 }
@@ -193,7 +199,15 @@ async fn poster(
             // TODO: Would it be better to inspect node to see if it's a Session?
             if uri == "/redfish/v1/SessionService/Sessions" {
                 let token = Uuid::new_v4().as_simple().to_string();
-                let username = node.get_body().as_object().unwrap().get("UserName").unwrap().as_str().unwrap().to_string();
+                let username = node
+                    .get_body()
+                    .as_object()
+                    .unwrap()
+                    .get("UserName")
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .to_string();
                 let session = Session {
                     token: token.clone(),
                     username,
@@ -204,7 +218,7 @@ async fn poster(
                 additional_headers.insert("x-auth-token", header_val);
             }
             get_node_created_response(node, additional_headers)
-        },
+        }
         Err(error) => get_error_response(error),
     }
 }
@@ -239,17 +253,11 @@ async fn get_redfish(headers: HeaderMap) -> Response {
             return bad_odata_version_response();
         }
     }
-    get_non_node_json_response(
-        StatusCode::OK,
-        json!({ "v1": "/redfish/v1/" }),
-        "GET,HEAD",
-    ).into_response()
+    get_non_node_json_response(StatusCode::OK, json!({ "v1": "/redfish/v1/" }), "GET,HEAD")
+        .into_response()
 }
 
-async fn get_odata_metadata_doc(
-    headers: HeaderMap,
-    State(state): State<AppState>,
-) -> Response {
+async fn get_odata_metadata_doc(headers: HeaderMap, State(state): State<AppState>) -> Response {
     if let Some(odata_version) = headers.get("odata-version") {
         if odata_version != "4.0" {
             return bad_odata_version_response();
@@ -263,19 +271,19 @@ async fn get_odata_metadata_doc(
         [("OData-Version", "4.0")],
         [("Cache-Control", "no-cache")],
         body,
-    ).into_response()
+    )
+        .into_response()
 }
 
-async fn get_odata_service_doc(
-    State(state): State<AppState>,
-) -> Response {
+async fn get_odata_service_doc(State(state): State<AppState>) -> Response {
     let tree = state.tree.lock().unwrap();
     let service_root = tree.get("/redfish/v1", None);
     get_non_node_json_response(
         StatusCode::OK,
         get_odata_service_document(service_root.unwrap().get_body().as_object().unwrap()),
         "GET,HEAD",
-    ).into_response()
+    )
+    .into_response()
 }
 
 fn node_to_allow(node: &dyn RedfishNode) -> String {
@@ -287,7 +295,8 @@ fn bad_odata_version_response() -> Response {
         StatusCode::PRECONDITION_FAILED,
         [("OData-Version", "4.0")],
         [("Cache-Control", "no-cache")],
-    ).into_response()
+    )
+        .into_response()
 }
 
 fn get_described_by_header_value(node: &dyn RedfishNode) -> Option<HeaderValue> {
@@ -329,38 +338,39 @@ fn add_node_headers(headers: &mut HeaderMap, node: &dyn RedfishNode) -> () {
 fn get_node_get_response(node: &dyn RedfishNode) -> Response {
     let mut headers = get_standard_headers(node_to_allow(node).as_str());
     add_node_headers(&mut headers, node);
-    JsonResponse::new(
-        StatusCode::OK,
-        headers,
-        node.get_body(),
-    ).into_response()
+    JsonResponse::new(StatusCode::OK, headers, node.get_body()).into_response()
 }
 
 fn get_node_created_response(node: &dyn RedfishNode, additional_headers: HeaderMap) -> Response {
     let mut headers = get_standard_headers(node_to_allow(node).as_str());
     headers.extend(additional_headers);
     add_node_headers(&mut headers, node);
-    headers.insert(header::LOCATION, HeaderValue::from_str(node.get_uri()).unwrap());
-    JsonResponse::new(
-        StatusCode::CREATED,
-        headers,
-        node.get_body(),
-    ).into_response()
+    headers.insert(
+        header::LOCATION,
+        HeaderValue::from_str(node.get_uri()).unwrap(),
+    );
+    JsonResponse::new(StatusCode::CREATED, headers, node.get_body()).into_response()
 }
 
-fn get_non_node_json_response(status: StatusCode, data: serde_json::Value, allow: &str) -> Response {
-    JsonResponse::new(
-        status,
-        get_standard_headers(allow),
-        data,
-    ).into_response()
+fn get_non_node_json_response(
+    status: StatusCode,
+    data: serde_json::Value,
+    allow: &str,
+) -> Response {
+    JsonResponse::new(status, get_standard_headers(allow), data).into_response()
 }
 
 fn get_standard_headers(allow: &str) -> HeaderMap {
     let mut headers = HeaderMap::new();
     headers.insert(header::ALLOW, HeaderValue::from_str(allow).unwrap());
-    headers.insert(HeaderName::from_static("odata-version"), HeaderValue::from_static("4.0"));
-    headers.insert(HeaderName::from_static("cache-control"), HeaderValue::from_static("no-cache"));
+    headers.insert(
+        HeaderName::from_static("odata-version"),
+        HeaderValue::from_static("4.0"),
+    );
+    headers.insert(
+        HeaderName::from_static("cache-control"),
+        HeaderValue::from_static("no-cache"),
+    );
     headers
 }
 
@@ -371,19 +381,22 @@ fn get_error_response(error: RedfishErr) -> Response {
             // FIXME: Avoid repeating this everywhere
             [("OData-Version", "4.0")],
             [("Cache-Control", "no-cache")],
-        ).into_response(),
+        )
+            .into_response(),
         RedfishErr::Unauthorized => (
             StatusCode::UNAUTHORIZED,
             [("OData-Version", "4.0")],
             [("Cache-Control", "no-cache")],
             [("www-authenticate", "Basic realm=\"simple\"")], // TODO: Customize?
-        ).into_response(),
+        )
+            .into_response(),
         RedfishErr::MethodNotAllowed(allowed) => (
             StatusCode::METHOD_NOT_ALLOWED,
             [(header::ALLOW, allowed.to_string())],
             [("OData-Version", "4.0")],
             [("Cache-Control", "no-cache")],
-        ).into_response(),
+        )
+            .into_response(),
     }
 }
 
@@ -399,7 +412,10 @@ fn get_token_user(token: String, state: &AppState) -> Option<String> {
 // Parse credentials from request. If bad credentials, return RedfishError.
 // If no credentials, return Ok(None).
 // If credentials check out, return Ok(Some(username)).
-fn get_request_username(headers: &HeaderMap, state: &AppState) -> Result<Option<String>, RedfishErr> {
+fn get_request_username(
+    headers: &HeaderMap,
+    state: &AppState,
+) -> Result<Option<String>, RedfishErr> {
     match headers.get("x-auth-token") {
         Some(token) => match get_token_user(token.to_str().unwrap().to_string(), &state) {
             None => Err(RedfishErr::Unauthorized),
@@ -407,7 +423,9 @@ fn get_request_username(headers: &HeaderMap, state: &AppState) -> Result<Option<
         },
         None => match headers.get("authorization") {
             None => Ok(None),
-            Some(header_val) => match http_auth_basic::Credentials::from_header(header_val.to_str().unwrap().to_string()) {
+            Some(header_val) => match http_auth_basic::Credentials::from_header(
+                header_val.to_str().unwrap().to_string(),
+            ) {
                 Err(_) => Err(RedfishErr::Unauthorized),
                 // TODO: Actually validate credentials!
                 Ok(credentials) => Ok(Some(credentials.user_id)),
