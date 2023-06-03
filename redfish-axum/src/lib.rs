@@ -1,9 +1,11 @@
+use async_trait::async_trait;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Json, Response},
     routing::get,
     Router,
+    debug_handler,
 };
 use http::{
     header::{self},
@@ -15,7 +17,8 @@ use redfish_data::{
     RedfishResourceType,
 };
 use serde_json::json;
-use std::sync::{Arc, Mutex};
+use tokio;
+use std::sync::{Arc};
 use tower::layer::Layer;
 use tower_http::normalize_path::{NormalizePath, NormalizePathLayer};
 use uuid::Uuid;
@@ -39,20 +42,20 @@ pub trait RedfishNode {
     fn described_by(&self) -> Option<&str>; // TODO: Stricter URL type???
 }
 
-// TODO: Should all these methods be async?
+#[async_trait]
 pub trait RedfishTree {
     // Return Ok(RedfishNode) at the given URI, or a RedfishErr.
     // If the request successfully provided credentials as a user, the username is given.
     // If the request did not attempt to authenticate, the username is None.
     // If the requested URI requires authentication, and the username is None, you must return RedfishErr::Unauthorized.
-    fn get(&self, uri: &str, username: Option<&str>) -> Result<&dyn RedfishNode, RedfishErr>;
+    async fn get(&self, uri: &str, username: Option<&str>) -> Result<&dyn RedfishNode, RedfishErr>;
 
     // Create a resource, given the collction URI and JSON input.
     // Return Ok(RedfishNode) of the new resource, or Err.
     // If the request successfully provided credentials as a user, the username is given.
     // If the request did not attempt to authenticate, the username is None.
     // If the requested URI requires authentication, and the username is None, you must return RedfishErr::Unauthorized.
-    fn create(
+    async fn create(
         &mut self,
         uri: &str,
         req: serde_json::Value,
@@ -64,14 +67,14 @@ pub trait RedfishTree {
     // If the request successfully provided credentials as a user, the username is given.
     // If the request did not attempt to authenticate, the username is None.
     // If the requested URI requires authentication, and the username is None, you must return RedfishErr::Unauthorized.
-    fn delete(&mut self, uri: &str, username: Option<&str>) -> Result<(), RedfishErr>;
+    async fn delete(&mut self, uri: &str, username: Option<&str>) -> Result<(), RedfishErr>;
 
     // Patch a resource.
     // Return the patched resource on success, or Error.
     // If the request successfully provided credentials as a user, the username is given.
     // If the request did not attempt to authenticate, the username is None.
     // If the requested URI requires authentication, and the username is None, you must return RedfishErr::Unauthorized.
-    fn patch(
+    async fn patch(
         &mut self,
         uri: &str,
         req: serde_json::Value,
@@ -86,8 +89,8 @@ pub trait RedfishTree {
 // TODO: Better way to declare tree type???
 pub fn app<T: RedfishTree + Send + Sync + 'static>(tree: T) -> NormalizePath<Router> {
     let state = AppState {
-        tree: Arc::new(Mutex::new(tree)),
-        sessions: Arc::new(Mutex::new(Vec::new())),
+        tree: Arc::new(tokio::sync::RwLock::new(tree)),
+        sessions: Arc::new(std::sync::RwLock::new(Vec::new())),
     };
 
     let app = Router::new()
@@ -109,13 +112,13 @@ struct Session {
     uri: String,
 }
 
-//FIXME: Figure out right kind of mutex: https://docs.rs/tokio/1.25.0/tokio/sync/struct.Mutex.html#which-kind-of-mutex-should-you-use
 #[derive(Clone)]
 struct AppState {
-    tree: Arc<Mutex<dyn RedfishTree + Send>>,
-    sessions: Arc<Mutex<Vec<Session>>>,
+    tree: Arc<tokio::sync::RwLock<dyn RedfishTree + Send + Sync>>,
+    sessions: Arc<std::sync::RwLock<Vec<Session>>>,
 }
 
+#[debug_handler]
 async fn getter(
     headers: HeaderMap,
     Path(path): Path<String>,
@@ -127,17 +130,18 @@ async fn getter(
         }
     }
     let uri = "/redfish/".to_owned() + &path;
-    let tree = state.tree.lock().unwrap();
+    let tree = state.tree.read().await;
     let user = match get_request_username(&headers, &state) {
         Ok(user) => user,
         Err(e) => return get_error_response(e),
     };
-    match tree.get(uri.as_str(), user.as_deref()) {
+    match tree.get(uri.as_str(), user.as_deref()).await {
         Ok(node) => get_node_get_response(node),
         Err(error) => get_error_response(error),
     }
 }
 
+#[debug_handler]
 async fn deleter(
     headers: HeaderMap,
     Path(path): Path<String>,
@@ -149,15 +153,15 @@ async fn deleter(
         }
     }
     let uri = "/redfish/".to_owned() + &path;
-    let mut tree = state.tree.lock().unwrap();
+    let mut tree = state.tree.write().await;
     let user = match get_request_username(&headers, &state) {
         Ok(user) => user,
         Err(e) => return get_error_response(e),
     };
 
-    match tree.delete(uri.as_str(), user.as_deref()) {
+    match tree.delete(uri.as_str(), user.as_deref()).await {
         Ok(_) => {
-            let mut sessions = state.sessions.lock().unwrap();
+            let mut sessions = state.sessions.write().unwrap();
             for index in 0..sessions.len() {
                 if sessions[index].uri == uri {
                     sessions.swap_remove(index);
@@ -170,6 +174,7 @@ async fn deleter(
     }
 }
 
+#[debug_handler]
 async fn poster(
     headers: HeaderMap,
     Path(path): Path<String>,
@@ -187,13 +192,13 @@ async fn poster(
         uri = stripped.to_string();
     }
 
-    let mut tree = state.tree.lock().unwrap();
+    let mut tree = state.tree.write().await;
     let user = match get_request_username(&headers, &state) {
         Ok(user) => user,
         Err(e) => return get_error_response(e),
     };
 
-    match tree.create(uri.as_str(), payload, user.as_deref()) {
+    match tree.create(uri.as_str(), payload, user.as_deref()).await {
         Ok(node) => {
             let mut additional_headers = HeaderMap::new();
             // TODO: Would it be better to inspect node to see if it's a Session?
@@ -213,7 +218,7 @@ async fn poster(
                     username,
                     uri: node.get_uri().to_string(),
                 };
-                state.sessions.lock().unwrap().push(session);
+                state.sessions.write().unwrap().push(session);
                 let header_val = HeaderValue::from_str(token.as_str()).unwrap();
                 additional_headers.insert("x-auth-token", header_val);
             }
@@ -223,6 +228,7 @@ async fn poster(
     }
 }
 
+#[debug_handler]
 async fn patcher(
     headers: HeaderMap,
     Path(path): Path<String>,
@@ -235,13 +241,13 @@ async fn patcher(
         }
     }
     let uri = "/redfish/".to_owned() + &path;
-    let mut tree = state.tree.lock().unwrap();
+    let mut tree = state.tree.write().await;
     let user = match get_request_username(&headers, &state) {
         Ok(user) => user,
         Err(e) => return get_error_response(e),
     };
 
-    match tree.patch(uri.as_str(), payload, user.as_deref()) {
+    match tree.patch(uri.as_str(), payload, user.as_deref()).await {
         Ok(node) => get_node_get_response(node),
         Err(error) => get_error_response(error),
     }
@@ -263,7 +269,7 @@ async fn get_odata_metadata_doc(headers: HeaderMap, State(state): State<AppState
             return bad_odata_version_response();
         }
     }
-    let tree = state.tree.lock().unwrap();
+    let tree = state.tree.read().await;
     let body = get_odata_metadata_document(tree.get_collection_types(), tree.get_resource_types());
     (
         [(header::CONTENT_TYPE, "application/xml")],
@@ -276,8 +282,8 @@ async fn get_odata_metadata_doc(headers: HeaderMap, State(state): State<AppState
 }
 
 async fn get_odata_service_doc(State(state): State<AppState>) -> Response {
-    let tree = state.tree.lock().unwrap();
-    let service_root = tree.get("/redfish/v1", None);
+    let tree = state.tree.read().await;
+    let service_root = tree.get("/redfish/v1", None).await;
     get_non_node_json_response(
         StatusCode::OK,
         get_odata_service_document(service_root.unwrap().get_body().as_object().unwrap()),
@@ -401,7 +407,7 @@ fn get_error_response(error: RedfishErr) -> Response {
 }
 
 fn get_token_user(token: String, state: &AppState) -> Option<String> {
-    for session in state.sessions.lock().unwrap().iter() {
+    for session in state.sessions.read().unwrap().iter() {
         if session.token == token {
             return Some(session.username.clone());
         }

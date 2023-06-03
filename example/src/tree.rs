@@ -1,3 +1,4 @@
+use axum::async_trait;
 use redfish_axum::{RedfishErr, RedfishNode, RedfishTree};
 use redfish_data::{
     get_uri_id, AllowedMethods, RedfishCollectionType, RedfishResourceSchemaVersion,
@@ -182,8 +183,9 @@ impl MockTree {
     }
 }
 
+#[async_trait]
 impl RedfishTree for MockTree {
-    fn get(&self, uri: &str, username: Option<&str>) -> Result<&dyn RedfishNode, RedfishErr> {
+    async fn get(&self, uri: &str, username: Option<&str>) -> Result<&dyn RedfishNode, RedfishErr> {
         if uri != "/redfish/v1" && username.is_none() {
             return Err(RedfishErr::Unauthorized);
         }
@@ -196,7 +198,7 @@ impl RedfishTree for MockTree {
         Err(RedfishErr::NotFound)
     }
 
-    fn create(
+    async fn create(
         &mut self,
         uri: &str,
         req: serde_json::Value,
@@ -227,7 +229,7 @@ impl RedfishTree for MockTree {
         }
     }
 
-    fn delete(&mut self, uri: &str, username: Option<&str>) -> Result<(), RedfishErr> {
+    async fn delete(&mut self, uri: &str, username: Option<&str>) -> Result<(), RedfishErr> {
         if username.is_none() {
             return Err(RedfishErr::Unauthorized);
         }
@@ -258,7 +260,7 @@ impl RedfishTree for MockTree {
         }
     }
 
-    fn patch(
+    async fn patch(
         &mut self,
         uri: &str,
         req: serde_json::Value,
