@@ -1,11 +1,11 @@
 use async_trait::async_trait;
 use axum::{
+    debug_handler,
     extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Json, Response},
     routing::get,
     Router,
-    debug_handler,
 };
 use http::{
     header::{self},
@@ -17,8 +17,8 @@ use redfish_data::{
     RedfishResourceType,
 };
 use serde_json::json;
+use std::sync::Arc;
 use tokio;
-use std::sync::{Arc};
 use tower::layer::Layer;
 use tower_http::normalize_path::{NormalizePath, NormalizePathLayer};
 use uuid::Uuid;
