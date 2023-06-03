@@ -393,7 +393,7 @@ fn get_error_response(error: RedfishErr) -> Response {
             StatusCode::UNAUTHORIZED,
             [("OData-Version", "4.0")],
             [("Cache-Control", "no-cache")],
-            [("www-authenticate", "Basic realm=\"simple\"")], // TODO: Customize?
+            [("www-authenticate", "Basic realm=\"simple\"")],
         )
             .into_response(),
         RedfishErr::MethodNotAllowed(allowed) => (
