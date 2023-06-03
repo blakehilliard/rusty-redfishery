@@ -1,7 +1,7 @@
 use redfish_axum::{RedfishErr, RedfishNode, RedfishTree};
 use redfish_data::{
     get_uri_id, AllowedMethods, RedfishCollectionType, RedfishResourceSchemaVersion,
-    RedfishResourceType, RedfishSchemaVersion,
+    RedfishResourceType,
 };
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
@@ -106,7 +106,7 @@ impl RedfishResource {
             json!(format!(
                 "#{}.{}.{}",
                 schema_name,
-                schema_version.to_str(),
+                schema_version.to_string(),
                 term_name
             )),
         );

@@ -31,10 +31,7 @@ impl fmt::Display for AllowedMethods {
     }
 }
 
-pub trait RedfishSchemaVersion {
-    // FIXME: Use ToString trait?
-    fn to_str(&self) -> String;
-}
+pub trait RedfishSchemaVersion: fmt::Display {}
 
 #[derive(Clone, PartialEq)]
 pub struct RedfishResourceSchemaVersion {
@@ -53,9 +50,11 @@ impl RedfishResourceSchemaVersion {
     }
 }
 
-impl RedfishSchemaVersion for RedfishResourceSchemaVersion {
-    fn to_str(&self) -> String {
-        format!("v{}_{}_{}", self.major, self.minor, self.build)
+impl RedfishSchemaVersion for RedfishResourceSchemaVersion {}
+
+impl fmt::Display for RedfishResourceSchemaVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "v{}_{}_{}", self.major, self.minor, self.build)
     }
 }
 
@@ -70,9 +69,11 @@ impl RedfishCollectionSchemaVersion {
     }
 }
 
-impl RedfishSchemaVersion for RedfishCollectionSchemaVersion {
-    fn to_str(&self) -> String {
-        format!("v{}", self.version)
+impl RedfishSchemaVersion for RedfishCollectionSchemaVersion {}
+
+impl fmt::Display for RedfishCollectionSchemaVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "v{}", self.version)
     }
 }
 
@@ -95,7 +96,7 @@ impl RedfishResourceType {
             described_by: format!(
                 "https://redfish.dmtf.org/schemas/v1/{}.{}.json",
                 name,
-                version.to_str()
+                version.to_string()
             ),
             name,
             version,
@@ -126,7 +127,7 @@ impl RedfishCollectionType {
             xml_schema_uri: format!(
                 "http://redfish.dmtf.org/schemas/v1/{}_{}.xml",
                 name,
-                version.to_str()
+                version.to_string()
             ),
             described_by: format!("https://redfish.dmtf.org/schemas/v1/{}.json", name),
             name,
@@ -239,7 +240,7 @@ pub fn get_uri_id(uri: &str) -> String {
 }
 
 pub fn get_versioned_name(name: &str, version: &dyn RedfishSchemaVersion) -> String {
-    format!("{}.{}", name, version.to_str())
+    format!("{}.{}", name, version.to_string())
 }
 
 #[cfg(test)]
@@ -255,13 +256,13 @@ mod tests {
     #[test]
     fn collection_schema_version() {
         let version = RedfishCollectionSchemaVersion::new(1);
-        assert_eq!(version.to_str(), "v1");
+        assert_eq!(version.to_string(), "v1");
     }
 
     #[test]
     fn resource_schema_version() {
         let version = RedfishResourceSchemaVersion::new(1, 2, 3);
-        assert_eq!(version.to_str(), "v1_2_3");
+        assert_eq!(version.to_string(), "v1_2_3");
     }
 
     #[test]
