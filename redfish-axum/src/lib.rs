@@ -33,7 +33,7 @@ pub enum RedfishErr {
 }
 
 pub trait RedfishNode {
-    fn get_uri(&self) -> &str;
+    fn get_uri(&self) -> &str; // TODO: Stricter type?
     fn get_body(&self) -> serde_json::Value;
     fn get_allowed_methods(&self) -> AllowedMethods;
     fn described_by(&self) -> Option<&str>; // TODO: Stricter URL type???
