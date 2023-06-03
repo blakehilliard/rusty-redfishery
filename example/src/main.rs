@@ -415,7 +415,7 @@ mod tests {
         assert_eq!(
             body,
             json!({
-                "@odata.etag": "\"FIXME\"",
+                "@odata.etag": "\"HARDCODED_ETAG\"",
                 "@odata.id": "/redfish/v1",
                 "@odata.type": "#ServiceRoot.v1_15_0.ServiceRoot",
                 "Id": "RootService",
@@ -578,13 +578,13 @@ mod tests {
             &[
                 ("allow", "GET,HEAD,PATCH"),
                 ("link", "<https://redfish.dmtf.org/schemas/v1/SessionService.v1_1_8.json>; rel=describedby"),
-                ("etag", "\"FIXME\""),
+                ("etag", "\"HARDCODED_ETAG\""),
             ],
         ).await;
         assert_eq!(
             body,
             json!({
-                "@odata.etag": "\"FIXME\"",
+                "@odata.etag": "\"HARDCODED_ETAG\"",
                 "@odata.id": "/redfish/v1/SessionService",
                 "@odata.type": "#SessionService.v1_1_8.SessionService",
                 "@Redfish.WriteableProperties": ["SessionTimeout"],
@@ -610,14 +610,14 @@ mod tests {
                     "link",
                     "<https://redfish.dmtf.org/schemas/v1/SessionCollection.json>; rel=describedby",
                 ),
-                ("etag", "\"FIXME\""),
+                ("etag", "\"HARDCODED_ETAG\""),
             ],
         )
         .await;
         assert_eq!(
             body,
             json!({
-                "@odata.etag": "\"FIXME\"",
+                "@odata.etag": "\"HARDCODED_ETAG\"",
                 "@odata.id": "/redfish/v1/SessionService/Sessions",
                 "@odata.type": "#SessionCollection.SessionCollection",
                 "Name": "Session Collection",
@@ -642,7 +642,7 @@ mod tests {
         assert_eq!(
             body,
             json!({
-                "@odata.etag": "\"FIXME\"",
+                "@odata.etag": "\"HARDCODED_ETAG\"",
                 "@odata.id": "/redfish/v1/AccountService/Roles/Administrator",
                 "@odata.type": "#Role.v1_3_1.Role",
                 "Id": "Administrator",
@@ -675,7 +675,7 @@ mod tests {
         assert_eq!(
             body,
             json!({
-                "@odata.etag": "\"FIXME\"",
+                "@odata.etag": "\"HARDCODED_ETAG\"",
                 "@odata.id": "/redfish/v1/AccountService/Roles/Operator",
                 "@odata.type": "#Role.v1_3_1.Role",
                 "Id": "Operator",
@@ -706,7 +706,7 @@ mod tests {
         assert_eq!(
             body,
             json!({
-                "@odata.etag": "\"FIXME\"",
+                "@odata.etag": "\"HARDCODED_ETAG\"",
                 "@odata.id": "/redfish/v1/AccountService/Roles/ReadOnly",
                 "@odata.type": "#Role.v1_3_1.Role",
                 "Id": "ReadOnly",
@@ -783,13 +783,13 @@ mod tests {
             get_header(&response, "Link"),
             "<https://redfish.dmtf.org/schemas/v1/SessionService.v1_1_8.json>; rel=describedby"
         );
-        assert_eq!(get_header(&response, "etag"), "\"FIXME\"");
+        assert_eq!(get_header(&response, "etag"), "\"HARDCODED_ETAG\"");
 
         let body = get_response_json(response).await;
         assert_eq!(
             body,
             json!({
-                "@odata.etag": "\"FIXME\"",
+                "@odata.etag": "\"HARDCODED_ETAG\"",
                 "@odata.id": "/redfish/v1/SessionService",
                 "@odata.type": "#SessionService.v1_1_8.SessionService",
                 "@Redfish.WriteableProperties": ["SessionTimeout"],
@@ -811,7 +811,7 @@ mod tests {
         assert_eq!(
             body,
             json!({
-                "@odata.etag": "\"FIXME\"",
+                "@odata.etag": "\"HARDCODED_ETAG\"",
                 "@odata.id": "/redfish/v1/SessionService",
                 "@odata.type": "#SessionService.v1_1_8.SessionService",
                 "@Redfish.WriteableProperties": ["SessionTimeout"],
@@ -864,7 +864,7 @@ mod tests {
             get_header(&response, "Link"),
             "<https://redfish.dmtf.org/schemas/v1/Session.v1_6_0.json>; rel=describedby"
         );
-        assert_eq!(get_header(&response, "etag"), "\"FIXME\"");
+        assert_eq!(get_header(&response, "etag"), "\"HARDCODED_ETAG\"");
         let token1 = Auth::Token(get_header(&response, "X-Auth-Token").to_string());
 
         // Create session 2
@@ -887,14 +887,14 @@ mod tests {
             get_header(&response, "Link"),
             "<https://redfish.dmtf.org/schemas/v1/Session.v1_6_0.json>; rel=describedby"
         );
-        assert_eq!(get_header(&response, "etag"), "\"FIXME\"");
+        assert_eq!(get_header(&response, "etag"), "\"HARDCODED_ETAG\"");
         let token2 = Auth::Token(get_header(&response, "X-Auth-Token").to_string());
 
         let body = get_response_json(response).await;
         assert_eq!(
             body,
             json!({
-                "@odata.etag": "\"FIXME\"",
+                "@odata.etag": "\"HARDCODED_ETAG\"",
                 "@odata.id": "/redfish/v1/SessionService/Sessions/2",
                 "@odata.type": "#Session.v1_6_0.Session",
                 "Id": "2",
@@ -916,7 +916,7 @@ mod tests {
         assert_eq!(
             body,
             json!({
-                "@odata.etag": "\"FIXME\"",
+                "@odata.etag": "\"HARDCODED_ETAG\"",
                 "@odata.id": "/redfish/v1/SessionService/Sessions/1",
                 "@odata.type": "#Session.v1_6_0.Session",
                 "Id": "1",
@@ -937,7 +937,7 @@ mod tests {
         assert_eq!(
             body,
             json!({
-                "@odata.etag": "\"FIXME\"",
+                "@odata.etag": "\"HARDCODED_ETAG\"",
                 "@odata.id": "/redfish/v1/SessionService/Sessions/2",
                 "@odata.type": "#Session.v1_6_0.Session",
                 "Id": "2",
@@ -958,7 +958,7 @@ mod tests {
         assert_eq!(
             body,
             json!({
-                "@odata.etag": "\"FIXME\"",
+                "@odata.etag": "\"HARDCODED_ETAG\"",
                 "@odata.id": "/redfish/v1/SessionService/Sessions",
                 "@odata.type": "#SessionCollection.SessionCollection",
                 "Name": "Session Collection",
@@ -995,7 +995,7 @@ mod tests {
         assert_eq!(
             body,
             json!({
-                "@odata.etag": "\"FIXME\"",
+                "@odata.etag": "\"HARDCODED_ETAG\"",
                 "@odata.id": "/redfish/v1/SessionService/Sessions",
                 "@odata.type": "#SessionCollection.SessionCollection",
                 "Name": "Session Collection",
@@ -1020,7 +1020,7 @@ mod tests {
         assert_eq!(
             body,
             json!({
-                "@odata.etag": "\"FIXME\"",
+                "@odata.etag": "\"HARDCODED_ETAG\"",
                 "@odata.id": "/redfish/v1/SessionService/Sessions/2",
                 "@odata.type": "#Session.v1_6_0.Session",
                 "Id": "2",
