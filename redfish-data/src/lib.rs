@@ -1,3 +1,5 @@
+use std::fmt;
+
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 
@@ -9,9 +11,8 @@ pub struct AllowedMethods {
     pub post: bool,
 }
 
-impl AllowedMethods {
-    // TODO: Use ToString trait?
-    pub fn to_string(&self) -> String {
+impl fmt::Display for AllowedMethods {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut val = Vec::new();
         if self.get {
             val.push("GET");
@@ -26,7 +27,7 @@ impl AllowedMethods {
         if self.post {
             val.push("POST");
         }
-        val.join(",")
+        write!(f, "{}", val.join(","))
     }
 }
 
