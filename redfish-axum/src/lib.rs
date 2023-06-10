@@ -190,11 +190,11 @@ async fn poster(
             .get_body()
             .as_object()
             .unwrap()
-                    .get("UserName")
-                    .unwrap()
-                    .as_str()
-                    .unwrap()
-                    .to_string();
+            .get("UserName")
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .to_string();
         let session = Session {
             token: token.clone(),
             username,
@@ -225,11 +225,15 @@ async fn patcher(
 
 async fn get_redfish(headers: HeaderMap) -> Result<Response, RedfishErr> {
     validate_odata_version(&headers)?;
-    let res = get_non_node_json_response(StatusCode::OK, json!({ "v1": "/redfish/v1/" }), "GET,HEAD");
+    let res =
+        get_non_node_json_response(StatusCode::OK, json!({ "v1": "/redfish/v1/" }), "GET,HEAD");
     Ok(res.into_response())
 }
 
-async fn get_odata_metadata_doc(headers: HeaderMap, State(state): State<AppState>) -> Result<Response, RedfishErr> {
+async fn get_odata_metadata_doc(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Response, RedfishErr> {
     validate_odata_version(&headers)?;
     let tree = state.tree.read().await;
     let body = get_odata_metadata_document(tree.get_collection_types(), tree.get_resource_types());
@@ -362,7 +366,7 @@ impl IntoResponse for RedfishErr {
                 [("OData-Version", "4.0")],
                 [("Cache-Control", "no-cache")],
             )
-                .into_response()
+                .into_response(),
         }
     }
 }
