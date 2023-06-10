@@ -123,22 +123,18 @@ async fn getter(
     headers: HeaderMap,
     Path(path): Path<String>,
     State(state): State<AppState>,
-) -> Response {
+) -> Result<Response, RedfishErr> {
     if let Some(odata_version) = headers.get("odata-version") {
         if odata_version != "4.0" {
-            return bad_odata_version_response();
+            //TODO: Make this a RedfishErr?
+            return Ok(bad_odata_version_response());
         }
     }
     let uri = "/redfish/".to_owned() + &path;
     let tree = state.tree.read().await;
-    let user = match get_request_username(&headers, &state) {
-        Ok(user) => user,
-        Err(e) => return get_error_response(e),
-    };
-    match tree.get(uri.as_str(), user.as_deref()).await {
-        Ok(node) => get_node_get_response(node),
-        Err(error) => get_error_response(error),
-    }
+    let user = get_request_username(&headers, &state)?;
+    let node = tree.get(uri.as_str(), user.as_deref()).await?;
+    Ok(get_node_get_response(node))
 }
 
 #[debug_handler]
@@ -146,32 +142,26 @@ async fn deleter(
     headers: HeaderMap,
     Path(path): Path<String>,
     State(state): State<AppState>,
-) -> Response {
+) -> Result<Response, RedfishErr> {
     if let Some(odata_version) = headers.get("odata-version") {
         if odata_version != "4.0" {
-            return bad_odata_version_response();
+            //TODO: Make this a RedfishErr?
+            return Ok(bad_odata_version_response());
         }
     }
     let uri = "/redfish/".to_owned() + &path;
     let mut tree = state.tree.write().await;
-    let user = match get_request_username(&headers, &state) {
-        Ok(user) => user,
-        Err(e) => return get_error_response(e),
-    };
+    let user = get_request_username(&headers, &state)?;
 
-    match tree.delete(uri.as_str(), user.as_deref()).await {
-        Ok(_) => {
-            let mut sessions = state.sessions.write().unwrap();
-            for index in 0..sessions.len() {
-                if sessions[index].uri == uri {
-                    sessions.swap_remove(index);
-                    break;
-                }
-            }
-            (StatusCode::NO_CONTENT, [("Cache-Control", "no-cache")]).into_response()
+    tree.delete(uri.as_str(), user.as_deref()).await?;
+    let mut sessions = state.sessions.write().unwrap();
+    for index in 0..sessions.len() {
+        if sessions[index].uri == uri {
+            sessions.swap_remove(index);
+            break;
         }
-        Err(error) => get_error_response(error),
     }
+    Ok((StatusCode::NO_CONTENT, [("Cache-Control", "no-cache")]).into_response())
 }
 
 #[debug_handler]
@@ -180,10 +170,11 @@ async fn poster(
     Path(path): Path<String>,
     State(state): State<AppState>,
     Json(payload): Json<serde_json::Value>,
-) -> Response {
+) -> Result<Response, RedfishErr> {
     if let Some(odata_version) = headers.get("odata-version") {
         if odata_version != "4.0" {
-            return bad_odata_version_response();
+            //TODO: Make this a RedfishErr?
+            return Ok(bad_odata_version_response());
         }
     }
 
@@ -193,39 +184,32 @@ async fn poster(
     }
 
     let mut tree = state.tree.write().await;
-    let user = match get_request_username(&headers, &state) {
-        Ok(user) => user,
-        Err(e) => return get_error_response(e),
-    };
+    let user = get_request_username(&headers, &state)?;
 
-    match tree.create(uri.as_str(), payload, user.as_deref()).await {
-        Ok(node) => {
-            let mut additional_headers = HeaderMap::new();
-            // TODO: Would it be better to inspect node to see if it's a Session?
-            if uri == "/redfish/v1/SessionService/Sessions" {
-                let token = Uuid::new_v4().as_simple().to_string();
-                let username = node
-                    .get_body()
-                    .as_object()
-                    .unwrap()
+    let node = tree.create(uri.as_str(), payload, user.as_deref()).await?;
+    let mut additional_headers = HeaderMap::new();
+    // TODO: Would it be better to inspect node to see if it's a Session?
+    if uri == "/redfish/v1/SessionService/Sessions" {
+        let token = Uuid::new_v4().as_simple().to_string();
+        let username = node
+            .get_body()
+            .as_object()
+            .unwrap()
                     .get("UserName")
                     .unwrap()
                     .as_str()
                     .unwrap()
                     .to_string();
-                let session = Session {
-                    token: token.clone(),
-                    username,
-                    uri: node.get_uri().to_string(),
-                };
-                state.sessions.write().unwrap().push(session);
-                let header_val = HeaderValue::from_str(token.as_str()).unwrap();
-                additional_headers.insert("x-auth-token", header_val);
-            }
-            get_node_created_response(node, additional_headers)
-        }
-        Err(error) => get_error_response(error),
+        let session = Session {
+            token: token.clone(),
+            username,
+            uri: node.get_uri().to_string(),
+        };
+        state.sessions.write().unwrap().push(session);
+        let header_val = HeaderValue::from_str(token.as_str()).unwrap();
+        additional_headers.insert("x-auth-token", header_val);
     }
+    Ok(get_node_created_response(node, additional_headers))
 }
 
 #[debug_handler]
@@ -234,23 +218,19 @@ async fn patcher(
     Path(path): Path<String>,
     State(state): State<AppState>,
     Json(payload): Json<serde_json::Value>,
-) -> Response {
+) -> Result<Response, RedfishErr> {
     if let Some(odata_version) = headers.get("odata-version") {
         if odata_version != "4.0" {
-            return bad_odata_version_response();
+            //TODO: Make this a RedfishErr?
+            return Ok(bad_odata_version_response());
         }
     }
     let uri = "/redfish/".to_owned() + &path;
     let mut tree = state.tree.write().await;
-    let user = match get_request_username(&headers, &state) {
-        Ok(user) => user,
-        Err(e) => return get_error_response(e),
-    };
+    let user = get_request_username(&headers, &state)?;
 
-    match tree.patch(uri.as_str(), payload, user.as_deref()).await {
-        Ok(node) => get_node_get_response(node),
-        Err(error) => get_error_response(error),
-    }
+    let node = tree.patch(uri.as_str(), payload, user.as_deref()).await?;
+    Ok(get_node_get_response(node))
 }
 
 async fn get_redfish(headers: HeaderMap) -> Response {
@@ -380,29 +360,31 @@ fn get_standard_headers(allow: &str) -> HeaderMap {
     headers
 }
 
-fn get_error_response(error: RedfishErr) -> Response {
-    match error {
-        RedfishErr::NotFound => (
-            StatusCode::NOT_FOUND,
-            // FIXME: Avoid repeating this everywhere
-            [("OData-Version", "4.0")],
-            [("Cache-Control", "no-cache")],
-        )
-            .into_response(),
-        RedfishErr::Unauthorized => (
-            StatusCode::UNAUTHORIZED,
-            [("OData-Version", "4.0")],
-            [("Cache-Control", "no-cache")],
-            [("www-authenticate", "Basic realm=\"simple\"")],
-        )
-            .into_response(),
-        RedfishErr::MethodNotAllowed(allowed) => (
-            StatusCode::METHOD_NOT_ALLOWED,
-            [(header::ALLOW, allowed.to_string())],
-            [("OData-Version", "4.0")],
-            [("Cache-Control", "no-cache")],
-        )
-            .into_response(),
+impl IntoResponse for RedfishErr {
+    fn into_response(self) -> Response {
+        match self {
+            RedfishErr::NotFound => (
+                StatusCode::NOT_FOUND,
+                // FIXME: Avoid repeating this everywhere
+                [("OData-Version", "4.0")],
+                [("Cache-Control", "no-cache")],
+            )
+                .into_response(),
+            RedfishErr::Unauthorized => (
+                StatusCode::UNAUTHORIZED,
+                [("OData-Version", "4.0")],
+                [("Cache-Control", "no-cache")],
+                [("www-authenticate", "Basic realm=\"simple\"")],
+            )
+                .into_response(),
+            RedfishErr::MethodNotAllowed(allowed) => (
+                StatusCode::METHOD_NOT_ALLOWED,
+                [(header::ALLOW, allowed.to_string())],
+                [("OData-Version", "4.0")],
+                [("Cache-Control", "no-cache")],
+            )
+                .into_response(),
+        }
     }
 }
 
