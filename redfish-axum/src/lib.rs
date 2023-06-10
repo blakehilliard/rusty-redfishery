@@ -33,6 +33,7 @@ pub enum RedfishErr {
     NotFound,
     Unauthorized,
     MethodNotAllowed(AllowedMethods),
+    BadODataVersion,
 }
 
 pub trait RedfishNode {
@@ -118,18 +119,22 @@ struct AppState {
     sessions: Arc<std::sync::RwLock<Vec<Session>>>,
 }
 
+fn validate_odata_version(headers: &HeaderMap) -> Result<(), RedfishErr> {
+    if let Some(odata_version) = headers.get("odata-version") {
+        if odata_version != "4.0" {
+            return Err(RedfishErr::BadODataVersion);
+        }
+    }
+    Ok(())
+}
+
 #[debug_handler]
 async fn getter(
     headers: HeaderMap,
     Path(path): Path<String>,
     State(state): State<AppState>,
 ) -> Result<Response, RedfishErr> {
-    if let Some(odata_version) = headers.get("odata-version") {
-        if odata_version != "4.0" {
-            //TODO: Make this a RedfishErr?
-            return Ok(bad_odata_version_response());
-        }
-    }
+    validate_odata_version(&headers)?;
     let uri = "/redfish/".to_owned() + &path;
     let tree = state.tree.read().await;
     let user = get_request_username(&headers, &state)?;
@@ -143,12 +148,7 @@ async fn deleter(
     Path(path): Path<String>,
     State(state): State<AppState>,
 ) -> Result<Response, RedfishErr> {
-    if let Some(odata_version) = headers.get("odata-version") {
-        if odata_version != "4.0" {
-            //TODO: Make this a RedfishErr?
-            return Ok(bad_odata_version_response());
-        }
-    }
+    validate_odata_version(&headers)?;
     let uri = "/redfish/".to_owned() + &path;
     let mut tree = state.tree.write().await;
     let user = get_request_username(&headers, &state)?;
@@ -171,12 +171,7 @@ async fn poster(
     State(state): State<AppState>,
     Json(payload): Json<serde_json::Value>,
 ) -> Result<Response, RedfishErr> {
-    if let Some(odata_version) = headers.get("odata-version") {
-        if odata_version != "4.0" {
-            //TODO: Make this a RedfishErr?
-            return Ok(bad_odata_version_response());
-        }
-    }
+    validate_odata_version(&headers)?;
 
     let mut uri = "/redfish/".to_owned() + &path;
     if let Some(stripped) = uri.strip_suffix("/Members") {
@@ -219,12 +214,7 @@ async fn patcher(
     State(state): State<AppState>,
     Json(payload): Json<serde_json::Value>,
 ) -> Result<Response, RedfishErr> {
-    if let Some(odata_version) = headers.get("odata-version") {
-        if odata_version != "4.0" {
-            //TODO: Make this a RedfishErr?
-            return Ok(bad_odata_version_response());
-        }
-    }
+    validate_odata_version(&headers)?;
     let uri = "/redfish/".to_owned() + &path;
     let mut tree = state.tree.write().await;
     let user = get_request_username(&headers, &state)?;
@@ -233,32 +223,24 @@ async fn patcher(
     Ok(get_node_get_response(node))
 }
 
-async fn get_redfish(headers: HeaderMap) -> Response {
-    if let Some(odata_version) = headers.get("odata-version") {
-        if odata_version != "4.0" {
-            return bad_odata_version_response();
-        }
-    }
-    get_non_node_json_response(StatusCode::OK, json!({ "v1": "/redfish/v1/" }), "GET,HEAD")
-        .into_response()
+async fn get_redfish(headers: HeaderMap) -> Result<Response, RedfishErr> {
+    validate_odata_version(&headers)?;
+    let res = get_non_node_json_response(StatusCode::OK, json!({ "v1": "/redfish/v1/" }), "GET,HEAD");
+    Ok(res.into_response())
 }
 
-async fn get_odata_metadata_doc(headers: HeaderMap, State(state): State<AppState>) -> Response {
-    if let Some(odata_version) = headers.get("odata-version") {
-        if odata_version != "4.0" {
-            return bad_odata_version_response();
-        }
-    }
+async fn get_odata_metadata_doc(headers: HeaderMap, State(state): State<AppState>) -> Result<Response, RedfishErr> {
+    validate_odata_version(&headers)?;
     let tree = state.tree.read().await;
     let body = get_odata_metadata_document(tree.get_collection_types(), tree.get_resource_types());
-    (
+    Ok((
         [(header::CONTENT_TYPE, "application/xml")],
         [(header::ALLOW, "GET,HEAD")],
         [("OData-Version", "4.0")],
         [("Cache-Control", "no-cache")],
         body,
     )
-        .into_response()
+        .into_response())
 }
 
 async fn get_odata_service_doc(State(state): State<AppState>) -> Response {
@@ -274,15 +256,6 @@ async fn get_odata_service_doc(State(state): State<AppState>) -> Response {
 
 fn node_to_allow(node: &dyn RedfishNode) -> String {
     node.get_allowed_methods().to_string()
-}
-
-fn bad_odata_version_response() -> Response {
-    (
-        StatusCode::PRECONDITION_FAILED,
-        [("OData-Version", "4.0")],
-        [("Cache-Control", "no-cache")],
-    )
-        .into_response()
 }
 
 fn get_described_by_header_value(node: &dyn RedfishNode) -> Option<HeaderValue> {
@@ -384,6 +357,12 @@ impl IntoResponse for RedfishErr {
                 [("Cache-Control", "no-cache")],
             )
                 .into_response(),
+            RedfishErr::BadODataVersion => (
+                StatusCode::PRECONDITION_FAILED,
+                [("OData-Version", "4.0")],
+                [("Cache-Control", "no-cache")],
+            )
+                .into_response()
         }
     }
 }
