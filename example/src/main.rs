@@ -1,13 +1,13 @@
 use axum::{Router, ServiceExt};
 use redfish_axum::{Error, Node};
-use redfish_data::{get_uri_id, RedfishResourceSchemaVersion};
+use redfish_data::{get_uri_id, ResourceSchemaVersion};
 use serde_json::{json, Value};
 use tower_http::normalize_path::NormalizePath;
 
 mod tree;
-use tree::{MockTree, RedfishCollection, RedfishResource};
+use tree::{Collection, MockTree, Resource};
 
-fn create_session(collection: &RedfishCollection, req: Value) -> Result<RedfishResource, Error> {
+fn create_session(collection: &Collection, req: Value) -> Result<Resource, Error> {
     // Look at existing members to see next Id to pick
     let mut highest = 0;
     for member in collection.members.iter() {
@@ -21,10 +21,10 @@ fn create_session(collection: &RedfishCollection, req: Value) -> Result<RedfishR
     let member_uri = format!("{}/{}", collection.get_uri(), id);
 
     // Return new resource
-    Ok(RedfishResource::new(
+    Ok(Resource::new(
         member_uri.as_str(),
         String::from("Session"),
-        RedfishResourceSchemaVersion::new(1, 6, 0),
+        ResourceSchemaVersion::new(1, 6, 0),
         String::from("Session"),
         String::from(format!("Session {}", id)),
         Some(|_| Ok(())),
@@ -37,7 +37,7 @@ fn create_session(collection: &RedfishCollection, req: Value) -> Result<RedfishR
     ))
 }
 
-fn patch_session_service(resource: &mut RedfishResource, req: Value) -> Result<(), Error> {
+fn patch_session_service(resource: &mut Resource, req: Value) -> Result<(), Error> {
     // TODO: Allow patch that doesn't set this! And do correct error handling!
     let new_timeout = req
         .as_object()
@@ -52,10 +52,10 @@ fn patch_session_service(resource: &mut RedfishResource, req: Value) -> Result<(
 
 fn get_mock_tree() -> MockTree {
     let mut tree = MockTree::new();
-    tree.add_resource(RedfishResource::new(
+    tree.add_resource(Resource::new(
         "/redfish/v1",
         String::from("ServiceRoot"),
-        RedfishResourceSchemaVersion::new(1, 15, 0),
+        ResourceSchemaVersion::new(1, 15, 0),
         String::from("ServiceRoot"),
         String::from("Root Service"),
         None,
@@ -75,10 +75,10 @@ fn get_mock_tree() -> MockTree {
             },
         }),
     ));
-    tree.add_resource(RedfishResource::new(
+    tree.add_resource(Resource::new(
         "/redfish/v1/SessionService",
         String::from("SessionService"),
-        RedfishResourceSchemaVersion::new(1, 1, 8),
+        ResourceSchemaVersion::new(1, 1, 8),
         String::from("SessionService"),
         String::from("Session Service"),
         None,
@@ -92,17 +92,17 @@ fn get_mock_tree() -> MockTree {
             },
         }),
     ));
-    tree.add_collection(RedfishCollection::new(
+    tree.add_collection(Collection::new(
         "/redfish/v1/SessionService/Sessions",
         String::from("SessionCollection"),
         String::from("Session Collection"),
         Vec::new(),
         Some(create_session),
     ));
-    tree.add_resource(RedfishResource::new(
+    tree.add_resource(Resource::new(
         "/redfish/v1/AccountService",
         String::from("AccountService"),
-        RedfishResourceSchemaVersion::new(1, 12, 0),
+        ResourceSchemaVersion::new(1, 12, 0),
         String::from("AccountService"),
         String::from("Account Service"),
         None,
@@ -117,17 +117,17 @@ fn get_mock_tree() -> MockTree {
             }
         }),
     ));
-    tree.add_collection(RedfishCollection::new(
+    tree.add_collection(Collection::new(
         "/redfish/v1/AccountService/Accounts",
         String::from("ManagerAccountCollection"),
         String::from("Account Collection"),
         vec![String::from("/redfish/v1/AccountService/Accounts/admin")],
         None,
     ));
-    tree.add_resource(RedfishResource::new(
+    tree.add_resource(Resource::new(
         "/redfish/v1/AccountService/Accounts/admin",
         String::from("ManagerAccount"),
-        RedfishResourceSchemaVersion::new(1, 10, 0),
+        ResourceSchemaVersion::new(1, 10, 0),
         String::from("ManagerAccount"),
         String::from("Admin Account"),
         None,
@@ -146,7 +146,7 @@ fn get_mock_tree() -> MockTree {
             "UserName": "admin",
         }),
     ));
-    tree.add_collection(RedfishCollection::new(
+    tree.add_collection(Collection::new(
         "/redfish/v1/AccountService/Roles",
         String::from("RoleCollection"),
         String::from("Role Collection"),
@@ -157,10 +157,10 @@ fn get_mock_tree() -> MockTree {
         ],
         None,
     ));
-    tree.add_resource(RedfishResource::new(
+    tree.add_resource(Resource::new(
         "/redfish/v1/AccountService/Roles/Administrator",
         String::from("Role"),
-        RedfishResourceSchemaVersion::new(1, 3, 1),
+        ResourceSchemaVersion::new(1, 3, 1),
         String::from("Role"),
         String::from("Administrator Role"),
         None,
@@ -178,10 +178,10 @@ fn get_mock_tree() -> MockTree {
             "RoleId": "Administrator",
         }),
     ));
-    tree.add_resource(RedfishResource::new(
+    tree.add_resource(Resource::new(
         "/redfish/v1/AccountService/Roles/Operator",
         String::from("Role"),
-        RedfishResourceSchemaVersion::new(1, 3, 1),
+        ResourceSchemaVersion::new(1, 3, 1),
         String::from("Role"),
         String::from("Operator Role"),
         None,
@@ -197,10 +197,10 @@ fn get_mock_tree() -> MockTree {
             "RoleId": "Operator",
         }),
     ));
-    tree.add_resource(RedfishResource::new(
+    tree.add_resource(Resource::new(
         "/redfish/v1/AccountService/Roles/ReadOnly",
         String::from("Role"),
-        RedfishResourceSchemaVersion::new(1, 3, 1),
+        ResourceSchemaVersion::new(1, 3, 1),
         String::from("Role"),
         String::from("ReadOnly Role"),
         None,

@@ -31,16 +31,16 @@ impl fmt::Display for AllowedMethods {
     }
 }
 
-pub trait RedfishSchemaVersion: fmt::Display {}
+pub trait SchemaVersion: fmt::Display {}
 
 #[derive(Clone, PartialEq)]
-pub struct RedfishResourceSchemaVersion {
+pub struct ResourceSchemaVersion {
     major: u32,
     minor: u32,
     build: u32,
 }
 
-impl RedfishResourceSchemaVersion {
+impl ResourceSchemaVersion {
     pub fn new(major: u32, minor: u32, build: u32) -> Self {
         Self {
             major,
@@ -50,44 +50,44 @@ impl RedfishResourceSchemaVersion {
     }
 }
 
-impl RedfishSchemaVersion for RedfishResourceSchemaVersion {}
+impl SchemaVersion for ResourceSchemaVersion {}
 
-impl fmt::Display for RedfishResourceSchemaVersion {
+impl fmt::Display for ResourceSchemaVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "v{}_{}_{}", self.major, self.minor, self.build)
     }
 }
 
 #[derive(Clone, PartialEq)]
-pub struct RedfishCollectionSchemaVersion {
+pub struct CollectionSchemaVersion {
     version: u32,
 }
 
-impl RedfishCollectionSchemaVersion {
+impl CollectionSchemaVersion {
     pub fn new(version: u32) -> Self {
         Self { version }
     }
 }
 
-impl RedfishSchemaVersion for RedfishCollectionSchemaVersion {}
+impl SchemaVersion for CollectionSchemaVersion {}
 
-impl fmt::Display for RedfishCollectionSchemaVersion {
+impl fmt::Display for CollectionSchemaVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "v{}", self.version)
     }
 }
 
 #[derive(Clone, PartialEq)]
-pub struct RedfishResourceType {
+pub struct ResourceType {
     pub name: String,
-    pub version: RedfishResourceSchemaVersion,
+    pub version: ResourceSchemaVersion,
     pub xml_schema_uri: String,
     pub described_by: String,
 }
 
-impl RedfishResourceType {
+impl ResourceType {
     // Create for a DMTF schema of a redfish resource
-    pub fn new_dmtf(name: String, version: RedfishResourceSchemaVersion) -> Self {
+    pub fn new_dmtf(name: String, version: ResourceSchemaVersion) -> Self {
         Self {
             xml_schema_uri: format!(
                 "http://redfish.dmtf.org/schemas/v1/{}_v{}.xml",
@@ -114,15 +114,15 @@ impl RedfishResourceType {
 }
 
 #[derive(Clone, PartialEq)]
-pub struct RedfishCollectionType {
+pub struct CollectionType {
     pub name: String,
-    pub version: RedfishCollectionSchemaVersion,
+    pub version: CollectionSchemaVersion,
     pub xml_schema_uri: String,
     pub described_by: String,
 }
 
-impl RedfishCollectionType {
-    pub fn new_dmtf(name: String, version: RedfishCollectionSchemaVersion) -> Self {
+impl CollectionType {
+    pub fn new_dmtf(name: String, version: CollectionSchemaVersion) -> Self {
         Self {
             xml_schema_uri: format!(
                 "http://redfish.dmtf.org/schemas/v1/{}_{}.xml",
@@ -137,7 +137,7 @@ impl RedfishCollectionType {
 
     // All collection versons are (currently?) v1 so making this to be the less tedious option
     pub fn new_dmtf_v1(name: String) -> Self {
-        RedfishCollectionType::new_dmtf(name, RedfishCollectionSchemaVersion::new(1))
+        CollectionType::new_dmtf(name, CollectionSchemaVersion::new(1))
     }
 
     pub fn to_xml(&self) -> String {
@@ -191,11 +191,11 @@ pub fn get_odata_service_document(service_root: &Map<String, Value>) -> Value {
 }
 
 pub fn get_odata_metadata_document(
-    collection_types: &[RedfishCollectionType],
-    resource_types: &[RedfishResourceType],
+    collection_types: &[CollectionType],
+    resource_types: &[ResourceType],
 ) -> String {
     let mut body = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<edmx:Edmx xmlns:edmx=\"http://docs.oasis-open.org/odata/ns/edmx\" Version=\"4.0\">\n");
-    let mut service_root_type: Option<&RedfishResourceType> = None;
+    let mut service_root_type: Option<&ResourceType> = None;
     for collection_type in collection_types {
         body.push_str(collection_type.to_xml().as_str());
     }
@@ -239,7 +239,7 @@ pub fn get_uri_id(uri: &str) -> String {
     }
 }
 
-pub fn get_versioned_name(name: &str, version: &dyn RedfishSchemaVersion) -> String {
+pub fn get_versioned_name(name: &str, version: &dyn SchemaVersion) -> String {
     format!("{}.{}", name, version.to_string())
 }
 
@@ -255,19 +255,19 @@ mod tests {
 
     #[test]
     fn collection_schema_version() {
-        let version = RedfishCollectionSchemaVersion::new(1);
+        let version = CollectionSchemaVersion::new(1);
         assert_eq!(version.to_string(), "v1");
     }
 
     #[test]
     fn resource_schema_version() {
-        let version = RedfishResourceSchemaVersion::new(1, 2, 3);
+        let version = ResourceSchemaVersion::new(1, 2, 3);
         assert_eq!(version.to_string(), "v1_2_3");
     }
 
     #[test]
     fn dmtf_collection_type() {
-        let collection_type = RedfishCollectionType::new_dmtf_v1(String::from("SessionCollection"));
+        let collection_type = CollectionType::new_dmtf_v1(String::from("SessionCollection"));
         let mut exp_xml = String::from("  <edmx:Reference Uri=\"http://redfish.dmtf.org/schemas/v1/SessionCollection_v1.xml\">\n");
         exp_xml.push_str("    <edmx:Include Namespace=\"SessionCollection\" />\n");
         exp_xml.push_str("  </edmx:Reference>\n");
@@ -276,8 +276,8 @@ mod tests {
 
     #[test]
     fn dmtf_resource_type() {
-        let version = RedfishResourceSchemaVersion::new(1, 3, 0);
-        let resource_type = RedfishResourceType::new_dmtf(String::from("Role"), version);
+        let version = ResourceSchemaVersion::new(1, 3, 0);
+        let resource_type = ResourceType::new_dmtf(String::from("Role"), version);
         let mut exp_xml = String::from(
             "  <edmx:Reference Uri=\"http://redfish.dmtf.org/schemas/v1/Role_v1.xml\">\n",
         );
@@ -326,14 +326,14 @@ mod tests {
     #[test]
     fn odata_metadata_document() {
         let mut collection_types = Vec::new();
-        collection_types.push(RedfishCollectionType::new_dmtf_v1(String::from(
+        collection_types.push(CollectionType::new_dmtf_v1(String::from(
             "SessionCollection",
         )));
 
         let mut resource_types = Vec::new();
-        resource_types.push(RedfishResourceType::new_dmtf(
+        resource_types.push(ResourceType::new_dmtf(
             String::from("ServiceRoot"),
-            RedfishResourceSchemaVersion::new(1, 15, 0),
+            ResourceSchemaVersion::new(1, 15, 0),
         ));
 
         let exp_xml = String::from(

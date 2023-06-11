@@ -1,34 +1,33 @@
 use axum::async_trait;
 use redfish_axum::{Error, Node, Tree};
 use redfish_data::{
-    get_uri_id, AllowedMethods, RedfishCollectionType, RedfishResourceSchemaVersion,
-    RedfishResourceType,
+    get_uri_id, AllowedMethods, CollectionType, ResourceSchemaVersion, ResourceType,
 };
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 
-pub struct RedfishCollection {
+pub struct Collection {
     uri: String,
-    resource_type: RedfishCollectionType,
+    resource_type: CollectionType,
     name: String,
     pub members: Vec<String>,
     // if user should not be able to POST to collection, this should be None
-    // else, it should be a function that returns new RedfishResource generated from Request
+    // else, it should be a function that returns new Resource generated from Request
     // that function should *not* add the resource to the collection's members vector.
-    post: Option<fn(&RedfishCollection, serde_json::Value) -> Result<RedfishResource, Error>>,
+    post: Option<fn(&Collection, serde_json::Value) -> Result<Resource, Error>>,
 }
 
-impl RedfishCollection {
+impl Collection {
     pub fn new(
         uri: &str,
         schema_name: String,
         name: String,
         members: Vec<String>,
-        post: Option<fn(&RedfishCollection, serde_json::Value) -> Result<RedfishResource, Error>>,
+        post: Option<fn(&Collection, serde_json::Value) -> Result<Resource, Error>>,
     ) -> Self {
         Self {
             uri: String::from(uri),
-            resource_type: RedfishCollectionType::new_dmtf_v1(schema_name),
+            resource_type: CollectionType::new_dmtf_v1(schema_name),
             name,
             members,
             post,
@@ -36,7 +35,7 @@ impl RedfishCollection {
     }
 }
 
-impl Node for RedfishCollection {
+impl Node for Collection {
     fn get_uri(&self) -> &str {
         self.uri.as_str()
     }
@@ -72,28 +71,28 @@ impl Node for RedfishCollection {
     }
 }
 
-pub struct RedfishResource {
+pub struct Resource {
     uri: String, //TODO: Enforce things here? Does DMTF recommend trailing slash or no?
-    resource_type: RedfishResourceType,
+    resource_type: ResourceType,
     pub body: Map<String, Value>,
     collection: Option<String>,
     // if user should not be able to PATCH this resource, this should be None
     // else, it should be a function that applies the patch.
-    patch: Option<fn(&mut RedfishResource, serde_json::Value) -> Result<(), Error>>,
+    patch: Option<fn(&mut Resource, serde_json::Value) -> Result<(), Error>>,
     // if use should not be able to DELETE this resource, this should be None.
     // else, it should be a function that performs any extra logic associated with deleting the resource.
-    delete: Option<fn(&RedfishResource) -> Result<(), Error>>,
+    delete: Option<fn(&Resource) -> Result<(), Error>>,
 }
 
-impl RedfishResource {
+impl Resource {
     pub fn new(
         uri: &str,
         schema_name: String,
-        schema_version: RedfishResourceSchemaVersion,
+        schema_version: ResourceSchemaVersion,
         term_name: String,
         name: String,
-        delete: Option<fn(&RedfishResource) -> Result<(), Error>>,
-        patch: Option<fn(&mut RedfishResource, serde_json::Value) -> Result<(), Error>>,
+        delete: Option<fn(&Resource) -> Result<(), Error>>,
+        patch: Option<fn(&mut Resource, serde_json::Value) -> Result<(), Error>>,
         collection: Option<String>,
         rest: Value,
     ) -> Self {
@@ -112,7 +111,7 @@ impl RedfishResource {
         let id = get_uri_id(uri);
         body.insert(String::from("Id"), json!(id));
         body.insert(String::from("Name"), json!(name));
-        let resource_type = RedfishResourceType::new_dmtf(schema_name, schema_version);
+        let resource_type = ResourceType::new_dmtf(schema_name, schema_version);
         Self {
             uri: String::from(uri),
             resource_type,
@@ -124,7 +123,7 @@ impl RedfishResource {
     }
 }
 
-impl Node for RedfishResource {
+impl Node for Resource {
     fn get_uri(&self) -> &str {
         self.uri.as_str()
     }
@@ -148,10 +147,10 @@ impl Node for RedfishResource {
 }
 
 pub struct MockTree {
-    resources: HashMap<String, RedfishResource>,
-    collections: HashMap<String, RedfishCollection>,
-    collection_types: Vec<RedfishCollectionType>,
-    resource_types: Vec<RedfishResourceType>,
+    resources: HashMap<String, Resource>,
+    collections: HashMap<String, Collection>,
+    collection_types: Vec<CollectionType>,
+    resource_types: Vec<ResourceType>,
 }
 
 impl MockTree {
@@ -164,7 +163,7 @@ impl MockTree {
         }
     }
 
-    pub fn add_resource(&mut self, resource: RedfishResource) {
+    pub fn add_resource(&mut self, resource: Resource) {
         let resource_type = resource.resource_type.clone();
         self.resources.insert(resource.uri.clone(), resource);
         if !self.resource_types.contains(&resource_type) {
@@ -172,7 +171,7 @@ impl MockTree {
         }
     }
 
-    pub fn add_collection(&mut self, collection: RedfishCollection) {
+    pub fn add_collection(&mut self, collection: Collection) {
         let collection_type = collection.resource_type.clone();
         self.collections.insert(collection.uri.clone(), collection);
         if !self.collection_types.contains(&collection_type) {
@@ -278,11 +277,11 @@ impl Tree for MockTree {
         }
     }
 
-    fn get_collection_types(&self) -> &[RedfishCollectionType] {
+    fn get_collection_types(&self) -> &[CollectionType] {
         &self.collection_types
     }
 
-    fn get_resource_types(&self) -> &[RedfishResourceType] {
+    fn get_resource_types(&self) -> &[ResourceType] {
         &self.resource_types
     }
 }

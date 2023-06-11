@@ -13,8 +13,8 @@ use http::{
 };
 use http_auth_basic;
 use redfish_data::{
-    get_odata_metadata_document, get_odata_service_document, AllowedMethods, RedfishCollectionType,
-    RedfishResourceType,
+    get_odata_metadata_document, get_odata_service_document, AllowedMethods, CollectionType,
+    ResourceType,
 };
 use serde_json::json;
 use std::sync::Arc;
@@ -82,9 +82,9 @@ pub trait Tree {
         username: Option<&str>,
     ) -> Result<&dyn Node, Error>;
 
-    fn get_collection_types(&self) -> &[RedfishCollectionType];
+    fn get_collection_types(&self) -> &[CollectionType];
 
-    fn get_resource_types(&self) -> &[RedfishResourceType];
+    fn get_resource_types(&self) -> &[ResourceType];
 }
 
 // TODO: Better way to declare tree type???
