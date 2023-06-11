@@ -1,4 +1,5 @@
 use axum::async_trait;
+use etag::EntityTag;
 use redfish_axum::{Error, Node, Tree};
 use redfish_data::{
     get_uri_id, AllowedMethods, CollectionType, ResourceSchemaVersion, ResourceType,
@@ -49,7 +50,7 @@ impl Node for Collection {
         }
         json!({
             "@odata.id": self.uri,
-            "@odata.etag": "\"HARDCODED_ETAG\"",
+            "@odata.etag": self.get_etag().unwrap().to_string(),
             "@odata.type": format!("#{}.{}", self.resource_type.name, self.resource_type.name),
             "Name": self.name,
             "Members": member_list,
@@ -68,6 +69,10 @@ impl Node for Collection {
 
     fn described_by(&self) -> Option<&str> {
         Some(self.resource_type.described_by.as_str())
+    }
+
+    fn get_etag(&self) -> Option<EntityTag> {
+        Some(EntityTag::strong("HARDCODED_ETAG"))
     }
 }
 
@@ -143,6 +148,10 @@ impl Node for Resource {
 
     fn described_by(&self) -> Option<&str> {
         Some(self.resource_type.described_by.as_str())
+    }
+
+    fn get_etag(&self) -> Option<EntityTag> {
+        Some(EntityTag::strong("HARDCODED_ETAG"))
     }
 }
 

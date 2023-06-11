@@ -7,6 +7,7 @@ use axum::{
     routing::get,
     Router,
 };
+use etag::EntityTag;
 use http::{
     header::{self},
     HeaderMap, HeaderName, HeaderValue,
@@ -41,6 +42,7 @@ pub trait Node {
     fn get_body(&self) -> Value;
     fn get_allowed_methods(&self) -> AllowedMethods;
     fn described_by(&self) -> Option<&str>; // TODO: Stricter URL type???
+    fn get_etag(&self) -> Option<EntityTag>;
 }
 
 #[async_trait]
@@ -270,13 +272,9 @@ fn get_described_by_header_value(node: &dyn Node) -> Option<HeaderValue> {
 }
 
 fn get_node_etag_header_value(node: &dyn Node) -> Option<HeaderValue> {
-    let body = node.get_body();
-    if body.is_object() {
-        if let Some(etag) = body.as_object().unwrap().get("@odata.etag") {
-            if let Ok(val) = HeaderValue::from_str(etag.as_str()?) {
-                return Some(val);
-            }
-        }
+    let etag = node.get_etag()?;
+    if let Ok(val) = HeaderValue::from_str(&etag.to_string()) {
+        return Some(val);
     }
     None
 }

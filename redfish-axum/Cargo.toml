@@ -19,6 +19,7 @@ redfish-data = { path = "../redfish-data" }
 uuid = { version = "1.3.3", features = ["v4"] }
 http-auth-basic = "0.3.3"
 async-trait = "0.1.68"
+etag = "4.0.0"
 
 [dev-dependencies]
 hyper = { version = "0.14.25", features = ["full"] }
