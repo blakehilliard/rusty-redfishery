@@ -1,5 +1,5 @@
 use axum::{Router, ServiceExt};
-use redfish_axum::{RedfishErr, RedfishNode};
+use redfish_axum::{Error, Node};
 use redfish_data::{get_uri_id, RedfishResourceSchemaVersion};
 use serde_json::{json, Value};
 use tower_http::normalize_path::NormalizePath;
@@ -7,10 +7,7 @@ use tower_http::normalize_path::NormalizePath;
 mod tree;
 use tree::{MockTree, RedfishCollection, RedfishResource};
 
-fn create_session(
-    collection: &RedfishCollection,
-    req: Value,
-) -> Result<RedfishResource, RedfishErr> {
+fn create_session(collection: &RedfishCollection, req: Value) -> Result<RedfishResource, Error> {
     // Look at existing members to see next Id to pick
     let mut highest = 0;
     for member in collection.members.iter() {
@@ -40,7 +37,7 @@ fn create_session(
     ))
 }
 
-fn patch_session_service(resource: &mut RedfishResource, req: Value) -> Result<(), RedfishErr> {
+fn patch_session_service(resource: &mut RedfishResource, req: Value) -> Result<(), Error> {
     // TODO: Allow patch that doesn't set this! And do correct error handling!
     let new_timeout = req
         .as_object()

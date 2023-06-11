@@ -1,5 +1,5 @@
 use axum::async_trait;
-use redfish_axum::{RedfishErr, RedfishNode, RedfishTree};
+use redfish_axum::{Error, Node, Tree};
 use redfish_data::{
     get_uri_id, AllowedMethods, RedfishCollectionType, RedfishResourceSchemaVersion,
     RedfishResourceType,
@@ -15,7 +15,7 @@ pub struct RedfishCollection {
     // if user should not be able to POST to collection, this should be None
     // else, it should be a function that returns new RedfishResource generated from Request
     // that function should *not* add the resource to the collection's members vector.
-    post: Option<fn(&RedfishCollection, serde_json::Value) -> Result<RedfishResource, RedfishErr>>,
+    post: Option<fn(&RedfishCollection, serde_json::Value) -> Result<RedfishResource, Error>>,
 }
 
 impl RedfishCollection {
@@ -24,9 +24,7 @@ impl RedfishCollection {
         schema_name: String,
         name: String,
         members: Vec<String>,
-        post: Option<
-            fn(&RedfishCollection, serde_json::Value) -> Result<RedfishResource, RedfishErr>,
-        >,
+        post: Option<fn(&RedfishCollection, serde_json::Value) -> Result<RedfishResource, Error>>,
     ) -> Self {
         Self {
             uri: String::from(uri),
@@ -38,7 +36,7 @@ impl RedfishCollection {
     }
 }
 
-impl RedfishNode for RedfishCollection {
+impl Node for RedfishCollection {
     fn get_uri(&self) -> &str {
         self.uri.as_str()
     }
@@ -81,10 +79,10 @@ pub struct RedfishResource {
     collection: Option<String>,
     // if user should not be able to PATCH this resource, this should be None
     // else, it should be a function that applies the patch.
-    patch: Option<fn(&mut RedfishResource, serde_json::Value) -> Result<(), RedfishErr>>,
+    patch: Option<fn(&mut RedfishResource, serde_json::Value) -> Result<(), Error>>,
     // if use should not be able to DELETE this resource, this should be None.
     // else, it should be a function that performs any extra logic associated with deleting the resource.
-    delete: Option<fn(&RedfishResource) -> Result<(), RedfishErr>>,
+    delete: Option<fn(&RedfishResource) -> Result<(), Error>>,
 }
 
 impl RedfishResource {
@@ -94,8 +92,8 @@ impl RedfishResource {
         schema_version: RedfishResourceSchemaVersion,
         term_name: String,
         name: String,
-        delete: Option<fn(&RedfishResource) -> Result<(), RedfishErr>>,
-        patch: Option<fn(&mut RedfishResource, serde_json::Value) -> Result<(), RedfishErr>>,
+        delete: Option<fn(&RedfishResource) -> Result<(), Error>>,
+        patch: Option<fn(&mut RedfishResource, serde_json::Value) -> Result<(), Error>>,
         collection: Option<String>,
         rest: Value,
     ) -> Self {
@@ -126,7 +124,7 @@ impl RedfishResource {
     }
 }
 
-impl RedfishNode for RedfishResource {
+impl Node for RedfishResource {
     fn get_uri(&self) -> &str {
         self.uri.as_str()
     }
@@ -184,10 +182,10 @@ impl MockTree {
 }
 
 #[async_trait]
-impl RedfishTree for MockTree {
-    async fn get(&self, uri: &str, username: Option<&str>) -> Result<&dyn RedfishNode, RedfishErr> {
+impl Tree for MockTree {
+    async fn get(&self, uri: &str, username: Option<&str>) -> Result<&dyn Node, Error> {
         if uri != "/redfish/v1" && username.is_none() {
-            return Err(RedfishErr::Unauthorized);
+            return Err(Error::Unauthorized);
         }
         if let Some(resource) = self.resources.get(uri) {
             return Ok(resource);
@@ -195,7 +193,7 @@ impl RedfishTree for MockTree {
         if let Some(collection) = self.collections.get(uri) {
             return Ok(collection);
         }
-        Err(RedfishErr::NotFound)
+        Err(Error::NotFound)
     }
 
     async fn create(
@@ -203,19 +201,17 @@ impl RedfishTree for MockTree {
         uri: &str,
         req: serde_json::Value,
         username: Option<&str>,
-    ) -> Result<&dyn RedfishNode, RedfishErr> {
+    ) -> Result<&dyn Node, Error> {
         if uri != "/redfish/v1/SessionService/Sessions" && username.is_none() {
-            return Err(RedfishErr::Unauthorized);
+            return Err(Error::Unauthorized);
         }
         match self.collections.get_mut(uri) {
             None => match self.resources.get(uri) {
-                Some(resource) => Err(RedfishErr::MethodNotAllowed(resource.get_allowed_methods())),
-                None => Err(RedfishErr::NotFound),
+                Some(resource) => Err(Error::MethodNotAllowed(resource.get_allowed_methods())),
+                None => Err(Error::NotFound),
             },
             Some(collection) => match collection.post {
-                None => Err(RedfishErr::MethodNotAllowed(
-                    collection.get_allowed_methods(),
-                )),
+                None => Err(Error::MethodNotAllowed(collection.get_allowed_methods())),
                 Some(post) => {
                     let member = post(collection, req)?;
                     let member_uri = member.uri.clone();
@@ -229,19 +225,17 @@ impl RedfishTree for MockTree {
         }
     }
 
-    async fn delete(&mut self, uri: &str, username: Option<&str>) -> Result<(), RedfishErr> {
+    async fn delete(&mut self, uri: &str, username: Option<&str>) -> Result<(), Error> {
         if username.is_none() {
-            return Err(RedfishErr::Unauthorized);
+            return Err(Error::Unauthorized);
         }
         match self.resources.get(uri) {
             None => match self.collections.get(uri) {
-                Some(collection) => Err(RedfishErr::MethodNotAllowed(
-                    collection.get_allowed_methods(),
-                )),
-                None => Err(RedfishErr::NotFound),
+                Some(collection) => Err(Error::MethodNotAllowed(collection.get_allowed_methods())),
+                None => Err(Error::NotFound),
             },
             Some(resource) => match resource.delete {
-                None => Err(RedfishErr::MethodNotAllowed(resource.get_allowed_methods())),
+                None => Err(Error::MethodNotAllowed(resource.get_allowed_methods())),
                 Some(delete) => {
                     delete(resource)?;
                     if let Some(collection_uri) = &resource.collection {
@@ -265,19 +259,17 @@ impl RedfishTree for MockTree {
         uri: &str,
         req: serde_json::Value,
         username: Option<&str>,
-    ) -> Result<&dyn RedfishNode, RedfishErr> {
+    ) -> Result<&dyn Node, Error> {
         if username.is_none() {
-            return Err(RedfishErr::Unauthorized);
+            return Err(Error::Unauthorized);
         }
         match self.resources.get_mut(uri) {
             None => match self.collections.get(uri) {
-                Some(collection) => Err(RedfishErr::MethodNotAllowed(
-                    collection.get_allowed_methods(),
-                )),
-                None => Err(RedfishErr::NotFound),
+                Some(collection) => Err(Error::MethodNotAllowed(collection.get_allowed_methods())),
+                None => Err(Error::NotFound),
             },
             Some(resource) => match resource.patch {
-                None => Err(RedfishErr::MethodNotAllowed(resource.get_allowed_methods())),
+                None => Err(Error::MethodNotAllowed(resource.get_allowed_methods())),
                 Some(patch) => {
                     patch(resource, req)?;
                     Ok(resource)
