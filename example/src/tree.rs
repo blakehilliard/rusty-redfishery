@@ -14,7 +14,7 @@ pub struct Collection {
     // if user should not be able to POST to collection, this should be None
     // else, it should be a function that returns new Resource generated from Request
     // that function should *not* add the resource to the collection's members vector.
-    post: Option<fn(&Collection, serde_json::Value) -> Result<Resource, Error>>,
+    post: Option<fn(&Collection, Map<String, Value>) -> Result<Resource, Error>>,
 }
 
 impl Collection {
@@ -23,7 +23,7 @@ impl Collection {
         schema_name: String,
         name: String,
         members: Vec<String>,
-        post: Option<fn(&Collection, serde_json::Value) -> Result<Resource, Error>>,
+        post: Option<fn(&Collection, Map<String, Value>) -> Result<Resource, Error>>,
     ) -> Self {
         Self {
             uri: String::from(uri),
@@ -78,7 +78,7 @@ pub struct Resource {
     collection: Option<String>,
     // if user should not be able to PATCH this resource, this should be None
     // else, it should be a function that applies the patch.
-    patch: Option<fn(&mut Resource, serde_json::Value) -> Result<(), Error>>,
+    patch: Option<fn(&mut Resource, Value) -> Result<(), Error>>,
     // if use should not be able to DELETE this resource, this should be None.
     // else, it should be a function that performs any extra logic associated with deleting the resource.
     delete: Option<fn(&Resource) -> Result<(), Error>>,
@@ -92,7 +92,7 @@ impl Resource {
         term_name: String,
         name: String,
         delete: Option<fn(&Resource) -> Result<(), Error>>,
-        patch: Option<fn(&mut Resource, serde_json::Value) -> Result<(), Error>>,
+        patch: Option<fn(&mut Resource, Value) -> Result<(), Error>>,
         collection: Option<String>,
         rest: Value,
     ) -> Self {
@@ -198,7 +198,7 @@ impl Tree for MockTree {
     async fn create(
         &mut self,
         uri: &str,
-        req: serde_json::Value,
+        req: Map<String, Value>,
         username: Option<&str>,
     ) -> Result<&dyn Node, Error> {
         if uri != "/redfish/v1/SessionService/Sessions" && username.is_none() {
@@ -256,7 +256,7 @@ impl Tree for MockTree {
     async fn patch(
         &mut self,
         uri: &str,
-        req: serde_json::Value,
+        req: Value,
         username: Option<&str>,
     ) -> Result<&dyn Node, Error> {
         if username.is_none() {

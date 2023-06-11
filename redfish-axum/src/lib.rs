@@ -16,7 +16,7 @@ use redfish_data::{
     get_odata_metadata_document, get_odata_service_document, AllowedMethods, CollectionType,
     ResourceType,
 };
-use serde_json::json;
+use serde_json::{json, Map, Value};
 use std::sync::Arc;
 use tokio;
 use tower::layer::Layer;
@@ -38,7 +38,7 @@ pub enum Error {
 
 pub trait Node {
     fn get_uri(&self) -> &str; // TODO: Stricter type? Ensure abspath? Don't allow trailing / ???
-    fn get_body(&self) -> serde_json::Value;
+    fn get_body(&self) -> Value;
     fn get_allowed_methods(&self) -> AllowedMethods;
     fn described_by(&self) -> Option<&str>; // TODO: Stricter URL type???
 }
@@ -59,7 +59,7 @@ pub trait Tree {
     async fn create(
         &mut self,
         uri: &str,
-        req: serde_json::Value,
+        req: Map<String, Value>,
         username: Option<&str>,
     ) -> Result<&dyn Node, Error>;
 
@@ -78,7 +78,7 @@ pub trait Tree {
     async fn patch(
         &mut self,
         uri: &str,
-        req: serde_json::Value,
+        req: Value,
         username: Option<&str>,
     ) -> Result<&dyn Node, Error>;
 
@@ -169,7 +169,7 @@ async fn poster(
     headers: HeaderMap,
     Path(path): Path<String>,
     State(state): State<AppState>,
-    Json(payload): Json<serde_json::Value>,
+    Json(payload): Json<Map<String, Value>>,
 ) -> Result<impl IntoResponse, Error> {
     validate_odata_version(&headers)?;
 
@@ -212,7 +212,7 @@ async fn patcher(
     headers: HeaderMap,
     Path(path): Path<String>,
     State(state): State<AppState>,
-    Json(payload): Json<serde_json::Value>,
+    Json(payload): Json<Value>,
 ) -> Result<impl IntoResponse, Error> {
     validate_odata_version(&headers)?;
     let uri = "/redfish/".to_owned() + &path;
@@ -315,11 +315,7 @@ fn get_node_created_response(node: &dyn Node, additional_headers: HeaderMap) -> 
     JsonResponse::new(StatusCode::CREATED, headers, node.get_body())
 }
 
-fn get_non_node_json_response(
-    status: StatusCode,
-    data: serde_json::Value,
-    allow: &str,
-) -> impl IntoResponse {
+fn get_non_node_json_response(status: StatusCode, data: Value, allow: &str) -> impl IntoResponse {
     JsonResponse::new(status, get_standard_headers(allow), data)
 }
 

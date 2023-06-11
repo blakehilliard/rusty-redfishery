@@ -1,13 +1,13 @@
 use axum::{Router, ServiceExt};
 use redfish_axum::{Error, Node};
 use redfish_data::{get_uri_id, ResourceSchemaVersion};
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use tower_http::normalize_path::NormalizePath;
 
 mod tree;
 use tree::{Collection, MockTree, Resource};
 
-fn create_session(collection: &Collection, req: Value) -> Result<Resource, Error> {
+fn create_session(collection: &Collection, req: Map<String, Value>) -> Result<Resource, Error> {
     // Look at existing members to see next Id to pick
     let mut highest = 0;
     for member in collection.members.iter() {
@@ -31,7 +31,7 @@ fn create_session(collection: &Collection, req: Value) -> Result<Resource, Error
         None,
         Some(String::from(collection.get_uri())),
         json!({
-            "UserName": req.as_object().unwrap().get("UserName").unwrap().as_str(),
+            "UserName": req.get("UserName").unwrap().as_str(),
             "Password": serde_json::Value::Null,
         }),
     ))
