@@ -37,7 +37,7 @@ pub enum Error {
 }
 
 pub trait Node {
-    fn get_uri(&self) -> &str; // TODO: Stricter type?
+    fn get_uri(&self) -> &str; // TODO: Stricter type? Ensure abspath? Don't allow trailing / ???
     fn get_body(&self) -> serde_json::Value;
     fn get_allowed_methods(&self) -> AllowedMethods;
     fn described_by(&self) -> Option<&str>; // TODO: Stricter URL type???
@@ -133,7 +133,7 @@ async fn getter(
     headers: HeaderMap,
     Path(path): Path<String>,
     State(state): State<AppState>,
-) -> Result<Response, Error> {
+) -> Result<impl IntoResponse, Error> {
     validate_odata_version(&headers)?;
     let uri = "/redfish/".to_owned() + &path;
     let tree = state.tree.read().await;
@@ -147,7 +147,7 @@ async fn deleter(
     headers: HeaderMap,
     Path(path): Path<String>,
     State(state): State<AppState>,
-) -> Result<Response, Error> {
+) -> Result<impl IntoResponse, Error> {
     validate_odata_version(&headers)?;
     let uri = "/redfish/".to_owned() + &path;
     let mut tree = state.tree.write().await;
@@ -161,7 +161,7 @@ async fn deleter(
             break;
         }
     }
-    Ok((StatusCode::NO_CONTENT, [("Cache-Control", "no-cache")]).into_response())
+    Ok((StatusCode::NO_CONTENT, [("Cache-Control", "no-cache")]))
 }
 
 #[debug_handler]
@@ -170,7 +170,7 @@ async fn poster(
     Path(path): Path<String>,
     State(state): State<AppState>,
     Json(payload): Json<serde_json::Value>,
-) -> Result<Response, Error> {
+) -> Result<impl IntoResponse, Error> {
     validate_odata_version(&headers)?;
 
     let mut uri = "/redfish/".to_owned() + &path;
@@ -213,7 +213,7 @@ async fn patcher(
     Path(path): Path<String>,
     State(state): State<AppState>,
     Json(payload): Json<serde_json::Value>,
-) -> Result<Response, Error> {
+) -> Result<impl IntoResponse, Error> {
     validate_odata_version(&headers)?;
     let uri = "/redfish/".to_owned() + &path;
     let mut tree = state.tree.write().await;
@@ -223,39 +223,39 @@ async fn patcher(
     Ok(get_node_get_response(node))
 }
 
-async fn get_redfish(headers: HeaderMap) -> Result<Response, Error> {
+async fn get_redfish(headers: HeaderMap) -> Result<impl IntoResponse, Error> {
     validate_odata_version(&headers)?;
-    let res =
-        get_non_node_json_response(StatusCode::OK, json!({ "v1": "/redfish/v1/" }), "GET,HEAD");
-    Ok(res.into_response())
+    Ok(get_non_node_json_response(
+        StatusCode::OK,
+        json!({ "v1": "/redfish/v1/" }),
+        "GET,HEAD",
+    ))
 }
 
 async fn get_odata_metadata_doc(
     headers: HeaderMap,
     State(state): State<AppState>,
-) -> Result<Response, Error> {
+) -> Result<impl IntoResponse, Error> {
     validate_odata_version(&headers)?;
     let tree = state.tree.read().await;
     let body = get_odata_metadata_document(tree.get_collection_types(), tree.get_resource_types());
     Ok((
         [(header::CONTENT_TYPE, "application/xml")],
         [(header::ALLOW, "GET,HEAD")],
-        [("OData-Version", "4.0")],
-        [("Cache-Control", "no-cache")],
+        COMMON_RESPONSE_HEADERS,
         body,
-    )
-        .into_response())
+    ))
 }
 
-async fn get_odata_service_doc(State(state): State<AppState>) -> Response {
+async fn get_odata_service_doc(State(state): State<AppState>) -> impl IntoResponse {
     let tree = state.tree.read().await;
     let service_root = tree.get("/redfish/v1", None).await;
     get_non_node_json_response(
         StatusCode::OK,
+        //TODO: Handle better than unwrap()
         get_odata_service_document(service_root.unwrap().get_body().as_object().unwrap()),
         "GET,HEAD",
     )
-    .into_response()
 }
 
 fn node_to_allow(node: &dyn Node) -> String {
@@ -298,13 +298,13 @@ fn add_node_headers(headers: &mut HeaderMap, node: &dyn Node) -> () {
     }
 }
 
-fn get_node_get_response(node: &dyn Node) -> Response {
+fn get_node_get_response(node: &dyn Node) -> impl IntoResponse {
     let mut headers = get_standard_headers(node_to_allow(node).as_str());
     add_node_headers(&mut headers, node);
-    JsonResponse::new(StatusCode::OK, headers, node.get_body()).into_response()
+    JsonResponse::new(StatusCode::OK, headers, node.get_body())
 }
 
-fn get_node_created_response(node: &dyn Node, additional_headers: HeaderMap) -> Response {
+fn get_node_created_response(node: &dyn Node, additional_headers: HeaderMap) -> impl IntoResponse {
     let mut headers = get_standard_headers(node_to_allow(node).as_str());
     headers.extend(additional_headers);
     add_node_headers(&mut headers, node);
@@ -312,15 +312,15 @@ fn get_node_created_response(node: &dyn Node, additional_headers: HeaderMap) -> 
         header::LOCATION,
         HeaderValue::from_str(node.get_uri()).unwrap(),
     );
-    JsonResponse::new(StatusCode::CREATED, headers, node.get_body()).into_response()
+    JsonResponse::new(StatusCode::CREATED, headers, node.get_body())
 }
 
 fn get_non_node_json_response(
     status: StatusCode,
     data: serde_json::Value,
     allow: &str,
-) -> Response {
-    JsonResponse::new(status, get_standard_headers(allow), data).into_response()
+) -> impl IntoResponse {
+    JsonResponse::new(status, get_standard_headers(allow), data)
 }
 
 fn get_standard_headers(allow: &str) -> HeaderMap {
