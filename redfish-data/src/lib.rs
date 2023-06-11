@@ -169,7 +169,7 @@ impl ODataServiceValue {
     }
 }
 
-pub fn get_odata_service_document(service_root: &Map<String, Value>) -> Value {
+pub fn get_odata_service_document(service_root: &Map<String, Value>) -> Map<String, Value> {
     let mut values = Vec::new();
     values.push(ODataServiceValue::new("/redfish/v1"));
 
@@ -183,11 +183,17 @@ pub fn get_odata_service_document(service_root: &Map<String, Value>) -> Value {
         }
     }
 
-    json!({
-        "@odata.id": "/redfish/v1/odata",
-        "@odata.context": "/redfish/v1/$metadata",
-        "value": values,
-    })
+    let mut res = Map::new();
+    res.insert(
+        String::from("@odata.id"),
+        Value::String(String::from("/redfish/v1/odata")),
+    );
+    res.insert(
+        String::from("@odata.context"),
+        Value::String(String::from("/redfish/v1/$metadata")),
+    );
+    res.insert(String::from("value"), json!(values));
+    res
 }
 
 pub fn get_odata_metadata_document(
@@ -304,7 +310,7 @@ mod tests {
         let doc = get_odata_service_document(service_root.as_object().unwrap());
         assert_eq!(
             doc,
-            json!({
+            *json!({
                 "@odata.id": "/redfish/v1/odata",
                 "@odata.context": "/redfish/v1/$metadata",
                 "value": [
@@ -320,6 +326,8 @@ mod tests {
                     },
                 ],
             })
+            .as_object()
+            .unwrap()
         );
     }
 

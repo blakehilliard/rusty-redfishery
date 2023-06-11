@@ -250,12 +250,9 @@ async fn get_odata_metadata_doc(
 async fn get_odata_service_doc(State(state): State<AppState>) -> impl IntoResponse {
     let tree = state.tree.read().await;
     let service_root = tree.get("/redfish/v1", None).await;
-    get_non_node_json_response(
-        StatusCode::OK,
-        //TODO: Handle better than unwrap()
-        get_odata_service_document(service_root.unwrap().get_body().as_object().unwrap()),
-        "GET,HEAD",
-    )
+    //TODO: Handle better than unwrap()
+    let doc = get_odata_service_document(service_root.unwrap().get_body().as_object().unwrap());
+    get_non_node_json_response(StatusCode::OK, Value::Object(doc), "GET,HEAD")
 }
 
 fn node_to_allow(node: &dyn Node) -> String {
