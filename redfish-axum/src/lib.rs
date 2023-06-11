@@ -337,36 +337,28 @@ fn get_standard_headers(allow: &str) -> HeaderMap {
     headers
 }
 
+const COMMON_RESPONSE_HEADERS: ([(&str, &str); 1], [(&str, &str); 1]) =
+    ([("OData-Version", "4.0")], [("Cache-Control", "no-cache")]);
+
 impl IntoResponse for Error {
     fn into_response(self) -> Response {
         match self {
-            Error::NotFound => (
-                StatusCode::NOT_FOUND,
-                // FIXME: Avoid repeating this everywhere
-                [("OData-Version", "4.0")],
-                [("Cache-Control", "no-cache")],
-            )
-                .into_response(),
+            Error::NotFound => (StatusCode::NOT_FOUND, COMMON_RESPONSE_HEADERS).into_response(),
             Error::Unauthorized => (
                 StatusCode::UNAUTHORIZED,
-                [("OData-Version", "4.0")],
-                [("Cache-Control", "no-cache")],
+                COMMON_RESPONSE_HEADERS,
                 [("www-authenticate", "Basic realm=\"simple\"")],
             )
                 .into_response(),
             Error::MethodNotAllowed(allowed) => (
                 StatusCode::METHOD_NOT_ALLOWED,
                 [(header::ALLOW, allowed.to_string())],
-                [("OData-Version", "4.0")],
-                [("Cache-Control", "no-cache")],
+                COMMON_RESPONSE_HEADERS,
             )
                 .into_response(),
-            Error::BadODataVersion => (
-                StatusCode::PRECONDITION_FAILED,
-                [("OData-Version", "4.0")],
-                [("Cache-Control", "no-cache")],
-            )
-                .into_response(),
+            Error::BadODataVersion => {
+                (StatusCode::PRECONDITION_FAILED, COMMON_RESPONSE_HEADERS).into_response()
+            }
         }
     }
 }
