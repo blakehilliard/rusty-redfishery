@@ -78,7 +78,7 @@ pub struct Resource {
     collection: Option<String>,
     // if user should not be able to PATCH this resource, this should be None
     // else, it should be a function that applies the patch.
-    patch: Option<fn(&mut Resource, Value) -> Result<(), Error>>,
+    patch: Option<fn(&mut Resource, Map<String, Value>) -> Result<(), Error>>,
     // if use should not be able to DELETE this resource, this should be None.
     // else, it should be a function that performs any extra logic associated with deleting the resource.
     delete: Option<fn(&Resource) -> Result<(), Error>>,
@@ -92,7 +92,7 @@ impl Resource {
         term_name: String,
         name: String,
         delete: Option<fn(&Resource) -> Result<(), Error>>,
-        patch: Option<fn(&mut Resource, Value) -> Result<(), Error>>,
+        patch: Option<fn(&mut Resource, Map<String, Value>) -> Result<(), Error>>,
         collection: Option<String>,
         rest: Value,
     ) -> Self {
@@ -256,7 +256,7 @@ impl Tree for MockTree {
     async fn patch(
         &mut self,
         uri: &str,
-        req: Value,
+        req: Map<String, Value>,
         username: Option<&str>,
     ) -> Result<&dyn Node, Error> {
         if username.is_none() {

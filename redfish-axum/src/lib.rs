@@ -78,7 +78,7 @@ pub trait Tree {
     async fn patch(
         &mut self,
         uri: &str,
-        req: Value,
+        req: Map<String, Value>,
         username: Option<&str>,
     ) -> Result<&dyn Node, Error>;
 
@@ -212,7 +212,7 @@ async fn patcher(
     headers: HeaderMap,
     Path(path): Path<String>,
     State(state): State<AppState>,
-    Json(payload): Json<Value>,
+    Json(payload): Json<Map<String, Value>>,
 ) -> Result<impl IntoResponse, Error> {
     validate_odata_version(&headers)?;
     let uri = "/redfish/".to_owned() + &path;

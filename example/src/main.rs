@@ -37,15 +37,9 @@ fn create_session(collection: &Collection, req: Map<String, Value>) -> Result<Re
     ))
 }
 
-fn patch_session_service(resource: &mut Resource, req: Value) -> Result<(), Error> {
+fn patch_session_service(resource: &mut Resource, req: Map<String, Value>) -> Result<(), Error> {
     // TODO: Allow patch that doesn't set this! And do correct error handling!
-    let new_timeout = req
-        .as_object()
-        .unwrap()
-        .get("SessionTimeout")
-        .unwrap()
-        .as_u64()
-        .unwrap();
+    let new_timeout = req.get("SessionTimeout").unwrap().as_u64().unwrap();
     resource.body["SessionTimeout"] = Value::from(new_timeout);
     Ok(())
 }
