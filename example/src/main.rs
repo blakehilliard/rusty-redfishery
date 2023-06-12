@@ -1132,6 +1132,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_if_none_match() {
+        let mut app = app();
+        // use if-none-match with different etag. should get the resource.
+        let request = Request::get("/redfish/v1")
+            .header("if-none-match", "\"BAD_ETAG\"")
+            .body(Body::empty())
+            .unwrap();
+        let response = app.ready().await.unwrap().call(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = get_response_json(response).await;
+        assert_eq!(&body["@odata.etag"], "\"HARDCODED_ETAG\"");
+
+        // use if-none-match with matching etag. should get NOT_MODIFIED.
+        let request = Request::get("/redfish/v1")
+            .header("if-none-match", "\"HARDCODED_ETAG\"")
+            .body(Body::empty())
+            .unwrap();
+        let response = app.ready().await.unwrap().call(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_MODIFIED);
+        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        assert_eq!(body, "");
+    }
+
+    #[tokio::test]
     async fn patch_bad_odata_version() {
         let mut app = app();
         let data = json!({"SessionTimeout": 300});

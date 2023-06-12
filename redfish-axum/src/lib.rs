@@ -18,6 +18,7 @@ use redfish_data::{
     ResourceType,
 };
 use serde_json::{json, Map, Value};
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio;
 use tower::layer::Layer;
@@ -135,13 +136,33 @@ async fn getter(
     headers: HeaderMap,
     Path(path): Path<String>,
     State(state): State<AppState>,
-) -> Result<impl IntoResponse, Error> {
+) -> Result<Response, Error> {
     validate_odata_version(&headers)?;
     let uri = "/redfish/".to_owned() + &path;
     let tree = state.tree.read().await;
     let user = get_request_username(&headers, &state)?;
     let node = tree.get(uri.as_str(), user.as_deref()).await?;
-    Ok(get_node_get_response(node))
+    if let Some(header_etag) = get_etag_from_header(&headers, "if-none-match") {
+        if let Some(node_etag) = node.get_etag() {
+            if (node_etag.weak && node_etag.weak_eq(&header_etag))
+                || node_etag.strong_eq(&header_etag)
+            {
+                return Ok((StatusCode::NOT_MODIFIED, COMMON_RESPONSE_HEADERS).into_response());
+            }
+        }
+    }
+    Ok(get_node_get_response(node).into_response())
+}
+
+fn get_etag_from_header(headers: &HeaderMap, header_name: &str) -> Option<EntityTag> {
+    let etag = match headers.get(header_name)?.to_str() {
+        Ok(etag) => etag,
+        _ => return None,
+    };
+    match EntityTag::from_str(etag) {
+        Ok(etag) => Some(etag),
+        _ => None,
+    }
 }
 
 #[debug_handler]
@@ -317,6 +338,7 @@ fn get_non_node_json_response(status: StatusCode, data: Value, allow: &str) -> i
 fn get_standard_headers(allow: &str) -> HeaderMap {
     let mut headers = HeaderMap::new();
     headers.insert(header::ALLOW, HeaderValue::from_str(allow).unwrap());
+    // TODO: Use COMMON_RESPONSE_HEADERS
     headers.insert(
         HeaderName::from_static("odata-version"),
         HeaderValue::from_static("4.0"),
