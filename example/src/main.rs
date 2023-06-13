@@ -7,7 +7,7 @@ use tower_http::normalize_path::NormalizePath;
 mod tree;
 use tree::{Collection, MockTree, Resource};
 
-fn create_session(collection: &Collection, req: Map<String, Value>) -> Result<Resource, Error> {
+fn create_session(collection: &Collection, request_body: &Map<String, Value>) -> Result<Resource, Error> {
     // Look at existing members to see next Id to pick
     let mut highest = 0;
     for member in collection.members.iter() {
@@ -31,15 +31,15 @@ fn create_session(collection: &Collection, req: Map<String, Value>) -> Result<Re
         None,
         Some(String::from(collection.get_uri())),
         json!({
-            "UserName": req.get("UserName").unwrap().as_str(),
+            "UserName": request_body.get("UserName").unwrap().as_str(),
             "Password": serde_json::Value::Null,
         }),
     ))
 }
 
-fn patch_session_service(resource: &mut Resource, req: Map<String, Value>) -> Result<(), Error> {
+fn patch_session_service(resource: &mut Resource, request_body: &Map<String, Value>) -> Result<(), Error> {
     // TODO: Allow patch that doesn't set this! And do correct error handling!
-    let new_timeout = req.get("SessionTimeout").unwrap().as_u64().unwrap();
+    let new_timeout = request_body.get("SessionTimeout").unwrap().as_u64().unwrap();
     resource.body["SessionTimeout"] = Value::from(new_timeout);
     Ok(())
 }

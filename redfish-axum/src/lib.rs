@@ -62,7 +62,7 @@ pub trait Tree {
     async fn create(
         &mut self,
         uri: &str,
-        req: Map<String, Value>,
+        request_body: &Map<String, Value>,
         username: Option<&str>,
     ) -> Result<&dyn Node, Error>;
 
@@ -81,7 +81,7 @@ pub trait Tree {
     async fn patch(
         &mut self,
         uri: &str,
-        req: Map<String, Value>,
+        request_body: &Map<String, Value>,
         username: Option<&str>,
     ) -> Result<&dyn Node, Error>;
 
@@ -204,7 +204,7 @@ async fn poster(
     let mut tree = state.tree.write().await;
     let user = get_request_username(&headers, &state)?;
 
-    let node = tree.create(uri.as_str(), payload, user.as_deref()).await?;
+    let node = tree.create(uri.as_str(), &payload, user.as_deref()).await?;
     let mut additional_headers = HeaderMap::new();
     // TODO: Would it be better to inspect node to see if it's a Session?
     if uri == "/redfish/v1/SessionService/Sessions" {
@@ -242,7 +242,7 @@ async fn patcher(
     let mut tree = state.tree.write().await;
     let user = get_request_username(&headers, &state)?;
 
-    let node = tree.patch(uri.as_str(), payload, user.as_deref()).await?;
+    let node = tree.patch(uri.as_str(), &payload, user.as_deref()).await?;
     Ok(get_node_get_response(node))
 }
 
