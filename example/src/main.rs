@@ -3,6 +3,8 @@ use redfish_axum::{Error, Node};
 use redfish_data::{get_uri_id, ResourceSchemaVersion};
 use serde_json::{json, Map, Value};
 use tower_http::normalize_path::NormalizePath;
+use axum_server::tls_rustls::RustlsConfig;
+use std::net::SocketAddr;
 
 mod tree;
 use tree::{Collection, MockTree, Resource};
@@ -219,7 +221,12 @@ fn app() -> NormalizePath<Router> {
 
 #[tokio::main]
 async fn main() {
-    axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
+    let config = RustlsConfig::from_pem_file("example/cert.pem", "example/key.pem")
+        .await
+        .unwrap();
+
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    axum_server::bind_rustls(addr, config)
         .serve(app().into_make_service())
         .await
         .unwrap();

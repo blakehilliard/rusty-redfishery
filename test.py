@@ -3,7 +3,7 @@
 import subprocess
 
 def get_uri(uri):
-    cmd = ["curl", "-ig", f"http://localhost:3000{uri}"]
+    cmd = ["curl", "-igk", f"http://localhost:3000{uri}"]
     print("\n===", uri, "===")
     out = subprocess.check_output(cmd).decode()
     print(out)
