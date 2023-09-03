@@ -40,9 +40,12 @@ fn create_session(collection: &Collection, request_body: &Map<String, Value>) ->
 }
 
 fn patch_session_service(resource: &mut Resource, request_body: &Map<String, Value>) -> Result<(), Error> {
-    // TODO: Allow patch that doesn't set this! And do correct error handling!
-    let new_timeout = request_body.get("SessionTimeout").unwrap().as_u64().unwrap();
-    resource.body["SessionTimeout"] = Value::from(new_timeout);
+    // TODO: API for patch handling
+    if let Some(timeout) = request_body.get("SessionTimeout") {
+        // TODO: Validate the value!
+        resource.body["SessionTimeout"] = Value::from(timeout.as_u64().unwrap());
+    }
+    // TODO: Error handling of attempts to patch other properties
     Ok(())
 }
 
@@ -835,6 +838,38 @@ mod tests {
         assert_eq!(
             get_header(&response, "Link"),
             "<https://redfish.dmtf.org/schemas/v1/SessionService.v1_1_8.json>; rel=describedby"
+        );
+    }
+
+    #[tokio::test]
+    async fn empty_patch() {
+        let mut app = app();
+        let (token, _) = login(&mut app).await;
+        let data = json!({});
+
+        let response = patch(&mut app, "/redfish/v1/SessionService", data, &token).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(get_header(&response, "allow"), "GET,HEAD,PATCH");
+        assert_eq!(get_header(&response, "cache-control"), "no-cache");
+        assert_eq!(
+            get_header(&response, "Link"),
+            "<https://redfish.dmtf.org/schemas/v1/SessionService.v1_1_8.json>; rel=describedby"
+        );
+        assert_eq!(get_header(&response, "etag"), "\"HARDCODED_ETAG\"");
+
+        let body = get_response_json(response).await;
+        assert_eq!(
+            body,
+            json!({
+                "@odata.etag": "\"HARDCODED_ETAG\"",
+                "@odata.id": "/redfish/v1/SessionService",
+                "@odata.type": "#SessionService.v1_1_8.SessionService",
+                "@Redfish.WriteableProperties": ["SessionTimeout"],
+                "Id": "SessionService",
+                "Name": "Session Service",
+                "SessionTimeout": 600,
+                "Sessions" : {"@odata.id": "/redfish/v1/SessionService/Sessions"},
+            })
         );
     }
 
