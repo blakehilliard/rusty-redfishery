@@ -28,6 +28,7 @@ use uuid::Uuid;
 mod json;
 use json::JsonResponse;
 
+// TODO: In doc, clarify that this has to be run via https not http
 // TODO: Is this a better fit for redfish-data?
 // TODO: This is nice for straight-forward cases, but how will I allow any custom error response?
 #[derive(Debug)]
