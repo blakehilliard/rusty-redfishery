@@ -425,11 +425,15 @@ mod tests {
     use super::*;
     use std::env;
 
-    #[test]
-    fn message_registry() {
+    fn get_base_registry() -> MessageRegistry {
         let mut path = env::var("CARGO_MANIFEST_DIR").unwrap();
         path.push_str("/../dmtf/Base.1.16.0.json");
-        let registry = MessageRegistry::from_file(&path);
+        MessageRegistry::from_file(&path)
+    }
+
+    #[test]
+    fn message_registry() {
+        let registry = get_base_registry();
         assert_eq!(registry.prefix, String::from("Base"));
         assert_eq!(registry.version.major, 1);
         assert_eq!(registry.version.minor, 16);
@@ -440,9 +444,7 @@ mod tests {
 
     #[test]
     fn message() {
-        let mut path = env::var("CARGO_MANIFEST_DIR").unwrap();
-        path.push_str("/../dmtf/Base.1.16.0.json");
-        let registry = MessageRegistry::from_file(&path);
+        let registry = get_base_registry();
         let message = Message::from_registry(
             &registry,
             "PropertyValueTypeError",
