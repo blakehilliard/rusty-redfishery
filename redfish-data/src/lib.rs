@@ -1,7 +1,16 @@
-use std::fmt;
-
 use serde::Serialize;
 use serde_json::{json, Map, Value};
+use std::str::FromStr;
+use std::{collections::HashMap, fmt, fs};
+use strum::{Display, EnumString};
+
+#[derive(Clone, Debug, Display, PartialEq, EnumString)]
+pub enum Health {
+    #[strum()]
+    OK,
+    Warning,
+    Critical,
+}
 
 #[derive(Clone, Copy, Debug)]
 pub struct AllowedMethods {
@@ -56,6 +65,19 @@ impl fmt::Display for ResourceSchemaVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "v{}_{}_{}", self.major, self.minor, self.build)
     }
+}
+
+pub fn get_resource_odata_type(
+    schema_name: &str,
+    schema_version: &ResourceSchemaVersion,
+    term_name: &str,
+) -> String {
+    format!(
+        "#{}.{}.{}",
+        schema_name,
+        schema_version.to_string(),
+        term_name
+    )
 }
 
 #[derive(Clone, PartialEq)]
@@ -249,9 +271,197 @@ pub fn get_versioned_name(name: &str, version: &dyn SchemaVersion) -> String {
     format!("{}.{}", name, version.to_string())
 }
 
+/* TODO
+pub struct ErrorResponse {
+    code: String,
+    message: String,
+    extended_info: Vec<Message>,
+}
+*/
+
+// FIXME: Should we have unique error enum per function call ???
+#[derive(Debug)]
+pub enum RegistryError {
+    MessageNotInRegistry,
+    WrongNumberOfMessageArgs,
+}
+
+// TODO: How to avoid implicit revlock to Message schema version at the time I write this?
+pub struct Message {
+    // TODO: Allow OEM? How?
+    version: ResourceSchemaVersion,
+    id: String,
+    related_properties: Vec<String>,
+    message: String,
+    // TODO: Is it valid to have something other than strings as message args?
+    message_args: Vec<String>,
+    severity: Health,
+    resolution: String,
+}
+
+impl Message {
+    pub fn from_registry(
+        registry: &MessageRegistry,
+        key: &str,
+        version: ResourceSchemaVersion,
+        message_args: Vec<String>,
+        related_properties: Vec<String>,
+    ) -> Result<Self, RegistryError> {
+        let message_definition = registry
+            .get_message_definition(key)
+            .ok_or(RegistryError::MessageNotInRegistry)?;
+        let id = registry.get_message_id(key);
+        let mut message = message_definition.message.clone();
+        //FIXME: Assert right number of args
+        for (idx, arg) in message_args.iter().enumerate() {
+            let from = format!("%{}", idx + 1);
+            message = message.replace(&from, arg);
+        }
+        Ok(Self {
+            version,
+            id,
+            related_properties,
+            message,
+            message_args,
+            severity: message_definition.severity.clone(),
+            resolution: message_definition.resolution.clone(),
+        })
+    }
+
+    //TODO: Give option to include deprecated Severity?
+    //TODO: If I want to provide different variations of this, give more specific names?
+    pub fn to_json(&self) -> Map<String, Value> {
+        let mut res = Map::new();
+        res.insert(
+            String::from("@odata.type"),
+            Value::String(get_resource_odata_type("Message", &self.version, "Message")),
+        );
+        res.insert(String::from("MessageId"), Value::String(self.id.clone()));
+        res.insert(String::from("Message"), Value::String(self.message.clone()));
+        res.insert(
+            String::from("RelatedProperties"),
+            serde_json::to_value(self.related_properties.clone()).unwrap(),
+        );
+        res.insert(
+            String::from("MessageArgs"),
+            serde_json::to_value(self.message_args.clone()).unwrap(),
+        );
+        res.insert(
+            String::from("MessageSeverity"),
+            Value::String(self.severity.to_string()),
+        );
+        res.insert(
+            String::from("Resolution"),
+            Value::String(self.resolution.clone()),
+        );
+        res
+    }
+}
+
+pub struct MessageDefinition {
+    message: String,
+    severity: Health,
+    number_of_args: u64,
+    resolution: String,
+}
+
+impl MessageDefinition {
+    fn from_registry(data: &Map<String, Value>) -> Self {
+        Self {
+            message: String::from(data.get("Message").unwrap().as_str().unwrap()),
+            severity: Health::from_str(data.get("MessageSeverity").unwrap().as_str().unwrap())
+                .unwrap(),
+            number_of_args: data.get("NumberOfArgs").unwrap().as_u64().unwrap(),
+            resolution: String::from(data.get("Resolution").unwrap().as_str().unwrap()),
+        }
+    }
+}
+
+pub struct MessageRegistry {
+    prefix: String,
+    version: ResourceSchemaVersion,
+    message_definitions: HashMap<String, MessageDefinition>,
+}
+
+impl MessageRegistry {
+    pub fn from_file(path: &str) -> Self {
+        let data = fs::read_to_string(path).expect("Unable to read file");
+        let data: Map<String, Value> =
+            serde_json::from_str(&data).expect("Unable to parse message registry file");
+        let version_str = data.get("RegistryVersion").unwrap().as_str().unwrap();
+        let version_parts: Vec<&str> = version_str.split(".").collect();
+        let mut message_definitions = HashMap::new();
+        for msg in data.get("Messages").unwrap().as_object().unwrap() {
+            let msg_name = msg.0.clone();
+            let msg_data = msg.1.as_object().unwrap();
+            let msg_def = MessageDefinition::from_registry(msg_data);
+            message_definitions.insert(msg_name, msg_def);
+        }
+        Self {
+            prefix: String::from(data.get("RegistryPrefix").unwrap().as_str().unwrap()),
+            version: ResourceSchemaVersion::new(
+                version_parts[0].parse().unwrap(),
+                version_parts[1].parse().unwrap(),
+                version_parts[2].parse().unwrap(),
+            ),
+            message_definitions,
+        }
+    }
+
+    pub fn get_message_definition(&self, key: &str) -> Option<&MessageDefinition> {
+        self.message_definitions.get(key)
+    }
+
+    pub fn get_message_id(&self, key: &str) -> String {
+        format!(
+            "{}.{}.{}.{}",
+            self.prefix, self.version.major, self.version.minor, key
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
+
+    #[test]
+    fn message_registry() {
+        let mut path = env::var("CARGO_MANIFEST_DIR").unwrap();
+        path.push_str("/../dmtf/Base.1.16.0.json");
+        let registry = MessageRegistry::from_file(&path);
+        assert_eq!(registry.prefix, String::from("Base"));
+        assert_eq!(registry.version.major, 1);
+        assert_eq!(registry.version.minor, 16);
+        assert_eq!(registry.version.build, 0);
+        let success = registry.message_definitions.get("Success").unwrap();
+        assert_eq!(success.severity, Health::OK);
+    }
+
+    #[test]
+    fn message() {
+        let mut path = env::var("CARGO_MANIFEST_DIR").unwrap();
+        path.push_str("/../dmtf/Base.1.16.0.json");
+        let registry = MessageRegistry::from_file(&path);
+        let message = Message::from_registry(
+            &registry,
+            "PropertyValueTypeError",
+            ResourceSchemaVersion::new(1, 1, 2),
+            vec![String::from("300"), String::from("SessionTimeout")],
+            vec![String::from("/SessionTimeout")],
+        )
+        .unwrap();
+        let jsonified = message.to_json();
+        assert_eq!(&jsonified, json!({
+            "@odata.type": "#Message.v1_1_2.Message",
+            "MessageId": "Base.1.16.PropertyValueTypeError",
+            "RelatedProperties": ["/SessionTimeout"],
+            "Message": "The value '300' for the property SessionTimeout is of a different type than the property can accept.",
+            "MessageArgs": ["300", "SessionTimeout"],
+            "MessageSeverity": "Warning",
+            "Resolution": "Correct the value for the property in the request body and resubmit the request if the operation failed."
+        }).as_object().unwrap());
+    }
 
     #[test]
     fn uri_id() {
