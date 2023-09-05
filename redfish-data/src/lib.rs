@@ -271,13 +271,46 @@ pub fn get_versioned_name(name: &str, version: &dyn SchemaVersion) -> String {
     format!("{}.{}", name, version.to_string())
 }
 
-/* TODO
 pub struct ErrorResponse {
     code: String,
     message: String,
     extended_info: Vec<Message>,
 }
-*/
+
+impl ErrorResponse {
+    pub fn from_registry(
+        registry: &MessageRegistry,
+        key: &str,
+        message_args: &Vec<String>,
+        extended_info: Vec<Message>,
+    ) -> Self {
+        let message_definition = registry.get_message_definition(key).unwrap();
+        Self {
+            code: registry.get_message_id(key),
+            message: message_definition.get_message(message_args),
+            extended_info,
+        }
+    }
+
+    pub fn to_json(&self) -> Map<String, Value> {
+        let mut extended_info = Vec::new();
+        for message in &self.extended_info {
+            extended_info.push(Value::Object(message.to_json()));
+        }
+
+        let mut error = Map::new();
+        error.insert(String::from("code"), Value::String(self.code.clone()));
+        error.insert(String::from("message"), Value::String(self.message.clone()));
+        error.insert(
+            String::from("@Message.ExtendedInfo"),
+            Value::Array(extended_info),
+        );
+
+        let mut res = Map::new();
+        res.insert(String::from("error"), Value::Object(error));
+        res
+    }
+}
 
 // FIXME: Should we have unique error enum per function call ???
 #[derive(Debug)]
@@ -311,12 +344,7 @@ impl Message {
             .get_message_definition(key)
             .ok_or(RegistryError::MessageNotInRegistry)?;
         let id = registry.get_message_id(key);
-        let mut message = message_definition.message.clone();
-        //FIXME: Assert right number of args
-        for (idx, arg) in message_args.iter().enumerate() {
-            let from = format!("%{}", idx + 1);
-            message = message.replace(&from, arg);
-        }
+        let message = message_definition.get_message(&message_args);
         Ok(Self {
             version,
             id,
@@ -374,6 +402,17 @@ impl MessageDefinition {
             number_of_args: data.get("NumberOfArgs").unwrap().as_u64().unwrap(),
             resolution: String::from(data.get("Resolution").unwrap().as_str().unwrap()),
         }
+    }
+
+    fn get_message(&self, message_args: &Vec<String>) -> String {
+        let mut message = self.message.clone();
+        //FIXME: Assert right number of args
+        for (idx, arg) in message_args.iter().enumerate() {
+            //FIXME: Ensure this finds something?
+            let from = format!("%{}", idx + 1);
+            message = message.replace(&from, arg);
+        }
+        message
     }
 }
 
@@ -462,6 +501,37 @@ mod tests {
             "MessageArgs": ["300", "SessionTimeout"],
             "MessageSeverity": "Warning",
             "Resolution": "Correct the value for the property in the request body and resubmit the request if the operation failed."
+        }).as_object().unwrap());
+    }
+
+    #[test]
+    fn error_response() {
+        let registry = get_base_registry();
+        let message = Message::from_registry(
+            &registry,
+            "PropertyValueTypeError",
+            ResourceSchemaVersion::new(1, 1, 2),
+            vec![String::from("300"), String::from("SessionTimeout")],
+            vec![String::from("/SessionTimeout")],
+        )
+        .unwrap();
+        let error = ErrorResponse::from_registry(&registry, "GeneralError", &vec![], vec![message]);
+        assert_eq!(&error.to_json(), json!({
+            "error": {
+                "code": "Base.1.16.GeneralError",
+                "message": "A general error has occurred.  See Resolution for information on how to resolve the error, or @Message.ExtendedInfo if Resolution is not provided.",
+                "@Message.ExtendedInfo": [
+                    {
+                        "@odata.type": "#Message.v1_1_2.Message",
+                        "MessageId": "Base.1.16.PropertyValueTypeError",
+                        "RelatedProperties": ["/SessionTimeout"],
+                        "Message": "The value '300' for the property SessionTimeout is of a different type than the property can accept.",
+                        "MessageArgs": ["300", "SessionTimeout"],
+                        "MessageSeverity": "Warning",
+                        "Resolution": "Correct the value for the property in the request body and resubmit the request if the operation failed."
+                    }
+                ]
+            }
         }).as_object().unwrap());
     }
 
